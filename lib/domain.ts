@@ -1,0 +1,1103 @@
+import { z } from "zod";
+export const uid = () => crypto.randomUUID();
+export const money = (n: number) =>
+  new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(
+    n / 100,
+  );
+export const today = () =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(
+    new Date(),
+  );
+export const stages = [
+  "enquiry",
+  "quote",
+  "confirmed",
+  "ingredients needed",
+  "ingredients ready",
+  "prepared",
+  "cooked",
+  "packaged",
+  "ready for delivery",
+  "delivered",
+] as const;
+export type Ingredient = {
+  id: string;
+  name: string;
+  unit: "g" | "ml" | "each";
+  packQuantity: number;
+  packCost: number;
+  yield: number;
+  allergens: string;
+  supplierId: string;
+  threshold: number;
+};
+export type Recipe = {
+  id: string;
+  name: string;
+  variant: string;
+  lines: { ingredientId: string; quantity: number }[];
+};
+export type Attendee = {
+  reference: string;
+  requirements: string;
+  meal: string;
+  reviewed: boolean;
+};
+export type Enquiry = {
+  service: string;
+  eventType: string;
+  attendees: number;
+  date: string;
+  eventTime: string;
+  arrivalTime: string;
+  requests: string;
+  dietary: string;
+  requirements: Attendee[];
+  name: string;
+  company: string;
+  email: string;
+  phone: string;
+  venue: string;
+  address: string;
+  postcode: string;
+  access: string;
+  unknownDetails: string;
+};
+export type Quote = {
+  version: number;
+  net: number;
+  vatRate: number;
+  total: number;
+  notes: string;
+  at: string;
+};
+export type Order = {
+  id: string;
+  reference: string;
+  customerId: string;
+  enquiryId?: string;
+  details: Enquiry;
+  status: string;
+  items: { recipeId: string; quantity: number }[];
+  quotes: Quote[];
+  allergyReviewed: boolean;
+  costSnapshot?: {
+    total: number;
+    items: {
+      recipeId: string;
+      name: string;
+      quantity: number;
+      unitCost: number;
+      lines: {
+        ingredientId: string;
+        name: string;
+        quantity: number;
+        cost: number;
+      }[];
+    }[];
+  };
+  consumed: boolean;
+  reservations: { batchId: string; quantity: number }[];
+  route?: {
+    miles: number;
+    minutes: number;
+    fuelCost: number | null;
+    source: string;
+    at: string;
+    departure: string;
+    returnTrip: boolean;
+    extraCost: number;
+    mapUrl?: string;
+  };
+  analysis?: unknown;
+};
+export type State = {
+  settings: {
+    kitchen: string;
+    vatRate: number;
+    vehicle: string;
+    mpg: number;
+    fuelPrice: number;
+    bufferMinutes: number;
+    ownerNotes: string;
+  };
+  ingredients: Ingredient[];
+  recipes: Recipe[];
+  customers: {
+    id: string;
+    name: string;
+    company: string;
+    email: string;
+    phone: string;
+    notes: string;
+  }[];
+  orders: Order[];
+  batches: {
+    id: string;
+    ingredientId: string;
+    quantity: number;
+    location: string;
+    intake: string;
+    expiry: string;
+    dateType: string;
+    opened: string;
+    frozen: string;
+    thawed: string;
+    notes: string;
+    unitCost: number;
+  }[];
+  movements: {
+    id: string;
+    batchId: string;
+    quantity: number;
+    reason: string;
+    orderId?: string;
+    at: string;
+  }[];
+  suppliers: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    deliveryCharge: number;
+    minimumOrder: number;
+    leadDays: number;
+    notes: string;
+    comms: { at: string; message: string }[];
+  }[];
+  purchases: {
+    id: string;
+    supplierId: string;
+    ingredientId: string;
+    quantity: number;
+    cost: number;
+    eta: string;
+    status: string;
+    notes: string;
+  }[];
+  waste: {
+    id: string;
+    orderId: string;
+    ingredientId: string;
+    recipeId: string;
+    batchId: string;
+    category: string;
+    quantity: number;
+    unit: string;
+    weightGrams: number;
+    cost: number;
+    reason: string;
+    date: string;
+  }[];
+  feedback: {
+    id: string;
+    customerId: string;
+    orderId: string;
+    rating: number;
+    comment: string;
+    date: string;
+  }[];
+  finance: {
+    id: string;
+    type: string;
+    amount: number;
+    category: string;
+    description: string;
+    date: string;
+    orderId: string;
+  }[];
+  drafts: {
+    id: string;
+    to: string;
+    subject: string;
+    body: string;
+    customerId?: string;
+    supplierId?: string;
+    at: string;
+  }[];
+  audit: { at: string; actor: string; action: string; target: string }[];
+  commands: string[];
+};
+export function emptyState(): State {
+  return {
+    settings: {
+      kitchen: "",
+      vatRate: 0,
+      vehicle: "2018 Hyundai Tucson petrol",
+      mpg: 0,
+      fuelPrice: 0,
+      bufferMinutes: 30,
+      ownerNotes: "",
+    },
+    ingredients: [],
+    recipes: [],
+    customers: [],
+    orders: [],
+    batches: [],
+    movements: [],
+    suppliers: [],
+    purchases: [],
+    waste: [],
+    feedback: [],
+    finance: [],
+    drafts: [],
+    audit: [],
+    commands: [],
+  };
+}
+const short = z.string().max(500);
+const long = z.string().max(8000);
+const date = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(
+    (v) =>
+      !isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v,
+    "Invalid date",
+  );
+const maybeDate = z.union([date, z.literal("")]);
+const positive = z.number().finite().positive();
+const nonnegative = z.number().finite().nonnegative();
+const cents = nonnegative.int();
+const count = positive.int().max(100000);
+const time = z.union([
+  z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  z.literal(""),
+]);
+export const enquirySchema = z
+  .object({
+    service: z.enum(["private", "corporate"]),
+    eventType: short.min(1),
+    attendees: count,
+    date: maybeDate,
+    eventTime: time,
+    arrivalTime: time,
+    requests: long,
+    dietary: long,
+    requirements: z
+      .array(
+        z.object({
+          reference: short.min(1),
+          requirements: short,
+          meal: short.default(""),
+          reviewed: z.boolean().default(false),
+        }),
+      )
+      .max(500),
+    name: short.min(1),
+    company: short,
+    email: z.string().email().max(254),
+    phone: short.min(5),
+    venue: short,
+    address: short,
+    postcode: short,
+    access: long,
+    unknownDetails: long,
+  })
+  .refine(
+    (v) => !v.date || v.date >= today(),
+    "Event date must not be in the past",
+  );
+export function recipeCost(s: State, r: Recipe) {
+  return r.lines.reduce((sum, l) => {
+    const i = s.ingredients.find((x) => x.id === l.ingredientId);
+    if (!i) throw Error("Ingredient is missing");
+    return sum + ((l.quantity / i.yield) * i.packCost) / i.packQuantity;
+  }, 0);
+}
+export function fuelCost(miles: number, mpg: number, pricePounds: number) {
+  if (mpg <= 0 || pricePounds <= 0) return null;
+  return Math.round((miles / mpg) * 4.54609 * pricePounds * 100);
+}
+export function needs(s: State, o: Order) {
+  const n: Record<string, number> = {};
+  for (const line of o.items) {
+    const r = s.recipes.find((x) => x.id === line.recipeId);
+    if (!r) throw Error("Recipe is missing");
+    for (const l of r.lines) {
+      const i = s.ingredients.find((x) => x.id === l.ingredientId)!;
+      n[i.id] = (n[i.id] || 0) + (l.quantity * line.quantity) / i.yield;
+    }
+  }
+  return n;
+}
+export function available(s: State, batchId: string, except?: string) {
+  const b = s.batches.find((x) => x.id === batchId)!;
+  return (
+    b.quantity -
+    s.orders
+      .filter((o) => o.id !== except)
+      .flatMap((o) => o.reservations)
+      .filter((r) => r.batchId === batchId)
+      .reduce((v, r) => v + r.quantity, 0)
+  );
+}
+export function reserve(s: State, o: Order) {
+  o.reservations = [];
+  const deficits: { ingredientId: string; quantity: number }[] = [];
+  for (const [ingredientId, qty] of Object.entries(needs(s, o))) {
+    let remaining = qty;
+    for (const b of s.batches
+      .filter(
+        (b) =>
+          b.ingredientId === ingredientId &&
+          b.expiry &&
+          b.expiry >= (o.details.date || today()) &&
+          b.expiry >= today(),
+      )
+      .sort((a, b) => a.expiry.localeCompare(b.expiry))) {
+      const take = Math.min(remaining, Math.max(0, available(s, b.id, o.id)));
+      if (take > 0) {
+        o.reservations.push({ batchId: b.id, quantity: take });
+        remaining -= take;
+      }
+      if (remaining < 0.000001) break;
+    }
+    if (remaining > 0.000001)
+      deficits.push({ ingredientId, quantity: remaining });
+  }
+  return deficits;
+}
+export function snapshot(s: State, o: Order) {
+  const items = o.items.map((item) => {
+    const r = s.recipes.find((x) => x.id === item.recipeId)!;
+    const lines = r.lines.map((l) => {
+      const i = s.ingredients.find((x) => x.id === l.ingredientId)!;
+      return {
+        ingredientId: i.id,
+        name: i.name,
+        quantity: l.quantity / i.yield,
+        cost: ((l.quantity / i.yield) * i.packCost) / i.packQuantity,
+      };
+    });
+    return {
+      recipeId: r.id,
+      name: `${r.name} · ${r.variant}`,
+      quantity: item.quantity,
+      unitCost: Math.round(lines.reduce((v, l) => v + l.cost, 0)),
+      lines,
+    };
+  });
+  return {
+    items,
+    total: items.reduce((v, l) => v + l.unitCost * l.quantity, 0),
+  };
+}
+export function alerts(s: State) {
+  const a: { title: string; detail: string; href: string }[] = [];
+  for (const i of s.ingredients) {
+    const stock = s.batches
+      .filter((b) => b.ingredientId === i.id && b.expiry && b.expiry >= today())
+      .reduce((v, b) => v + Math.max(0, available(s, b.id)), 0);
+    if (stock <= i.threshold)
+      a.push({
+        title: `${i.name}: restock`,
+        detail: `${Math.round(stock * 100) / 100} ${i.unit} available · threshold ${i.threshold}`,
+        href: "inventory",
+      });
+  }
+  for (const b of s.batches) {
+    if (b.quantity <= 0) continue;
+    const days = b.expiry
+      ? Math.round((Date.parse(b.expiry) - Date.parse(today())) / 86400000)
+      : null;
+    if (days === null || days <= 3)
+      a.push({
+        title: `${s.ingredients.find((i) => i.id === b.ingredientId)?.name}: ${days === null ? "date needed" : days < 0 ? "expired" : "expiry approaching"}`,
+        detail:
+          b.expiry ||
+          "Record the supplier label date before allocating this batch.",
+        href: "expiry",
+      });
+  }
+  for (const p of s.purchases)
+    if (p.status === "ordered" && p.eta < today())
+      a.push({
+        title: "Supplier delivery overdue",
+        detail: s.suppliers.find((x) => x.id === p.supplierId)?.name || "",
+        href: "suppliers",
+      });
+  for (const o of s.orders)
+    if (
+      !["delivered", "cancelled", "declined"].includes(o.status) &&
+      o.details.date &&
+      o.details.date <=
+        new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+    )
+      a.push({
+        title: `${o.reference} · ${o.details.date}`,
+        detail: `${o.details.company || o.details.name} · ${o.status}`,
+        href: `orders/${o.id}`,
+      });
+  return a;
+}
+export function recap(s: State, customerId: string, from: string, to: string) {
+  const customer = s.customers.find((x) => x.id === customerId);
+  if (!customer) throw Error("Select a customer");
+  const orders = s.orders.filter(
+    (o) =>
+      o.customerId === customerId &&
+      o.status === "delivered" &&
+      o.details.date >= from &&
+      o.details.date <= to,
+  );
+  const ids = new Set(orders.map((o) => o.id));
+  const popular: Record<string, number> = {};
+  for (const o of orders)
+    for (const item of o.costSnapshot?.items || [])
+      popular[item.name] = (popular[item.name] || 0) + item.quantity;
+  const waste = s.waste.filter(
+    (w) => ids.has(w.orderId) && w.date >= from && w.date <= to,
+  );
+  const feedback = s.feedback.filter(
+    (f) =>
+      f.customerId === customerId &&
+      ids.has(f.orderId) &&
+      f.date >= from &&
+      f.date <= to,
+  );
+  return {
+    customer: customer.company || customer.name,
+    from,
+    to,
+    orders: orders.length,
+    portions: Object.values(popular).reduce((a, b) => a + b, 0),
+    popular: Object.entries(popular)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, portions]) => ({ name, portions })),
+    wasteKg: waste.reduce((v, w) => v + w.weightGrams, 0) / 1000,
+    wasteRecords: waste.length,
+    unservedPortions: waste
+      .filter(
+        (w) => w.category === "unserved portions" && w.unit === "portions",
+      )
+      .reduce((v, w) => v + w.quantity, 0),
+    feedback: feedback.length
+      ? Math.round(
+          (feedback.reduce((v, f) => v + f.rating, 0) / feedback.length) * 10,
+        ) / 10
+      : null,
+  };
+}
+export type Command = { id: string; type: string; payload: any };
+export function applyCommand(
+  original: State,
+  command: Command,
+  actor: string,
+): State {
+  if (original.commands.includes(command.id)) return original;
+  const s = structuredClone(original),
+    p = command.payload,
+    at = new Date().toISOString();
+  let target = "";
+  const findOrder = () => {
+    const o = s.orders.find((x) => x.id === p.orderId);
+    if (!o) throw Error("Order not found");
+    target = o.id;
+    return o;
+  };
+  const editable = (o: Order) => {
+    if (!["enquiry", "quote"].includes(o.status))
+      throw Error(
+        "Only unconfirmed orders can be edited. Cancel and create a replacement for a confirmed change.",
+      );
+  };
+  switch (command.type) {
+    case "settings": {
+      s.settings = z
+        .object({
+          kitchen: short,
+          vatRate: nonnegative.max(100),
+          vehicle: short,
+          mpg: nonnegative.max(300),
+          fuelPrice: nonnegative.max(20),
+          bufferMinutes: nonnegative.int().max(1440),
+          ownerNotes: long,
+        })
+        .parse(p);
+      break;
+    }
+    case "ingredient": {
+      const v = z
+        .object({
+          id: short.optional(),
+          name: short.min(1),
+          unit: z.enum(["g", "ml", "each"]),
+          packQuantity: positive,
+          packCost: cents,
+          yield: positive.max(1),
+          allergens: short,
+          supplierId: short,
+          threshold: nonnegative,
+        })
+        .parse(p);
+      if (v.supplierId && !s.suppliers.some((x) => x.id === v.supplierId))
+        throw Error("Supplier not found");
+      const old = s.ingredients.find((i) => i.id === v.id);
+      if (
+        old &&
+        (old.unit !== v.unit ||
+          old.yield !== v.yield ||
+          old.allergens !== v.allergens) &&
+        s.orders.some(
+          (o) =>
+            ![
+              "enquiry",
+              "quote",
+              "delivered",
+              "cancelled",
+              "declined",
+            ].includes(o.status) &&
+            o.items.some((item) =>
+              s.recipes
+                .find((r) => r.id === item.recipeId)
+                ?.lines.some((l) => l.ingredientId === old.id),
+            ),
+        )
+      )
+        throw Error(
+          "Ingredient handling or allergen changes affect a confirmed order. Create a replacement ingredient and revise the order first.",
+        );
+      const id = v.id || uid();
+      s.ingredients = s.ingredients
+        .filter((x) => x.id !== id)
+        .concat({ ...v, id });
+      for (const o of s.orders.filter((x) =>
+        ["enquiry", "quote"].includes(x.status),
+      ))
+        o.allergyReviewed = false;
+      target = id;
+      break;
+    }
+    case "recipe": {
+      const v = z
+        .object({
+          id: short.optional(),
+          name: short.min(1),
+          variant: short.min(1),
+          lines: z
+            .array(z.object({ ingredientId: short.min(1), quantity: positive }))
+            .min(1)
+            .max(100),
+        })
+        .parse(p);
+      if (
+        v.lines.some((l) => !s.ingredients.some((i) => i.id === l.ingredientId))
+      )
+        throw Error("Ingredient not found");
+      if (
+        v.id &&
+        s.orders.some(
+          (o) =>
+            ![
+              "enquiry",
+              "quote",
+              "delivered",
+              "cancelled",
+              "declined",
+            ].includes(o.status) && o.items.some((i) => i.recipeId === v.id),
+        )
+      )
+        throw Error(
+          "Create a new variant while this recipe has active confirmed orders",
+        );
+      const id = v.id || uid();
+      s.recipes = s.recipes.filter((x) => x.id !== id).concat({ ...v, id });
+      for (const o of s.orders.filter(
+        (x) =>
+          x.items.some((i) => i.recipeId === id) &&
+          ["enquiry", "quote"].includes(x.status),
+      ))
+        o.allergyReviewed = false;
+      target = id;
+      break;
+    }
+    case "customer": {
+      const v = z
+        .object({
+          id: short.optional(),
+          name: short.min(1),
+          company: short,
+          email: z.string().email(),
+          phone: short,
+          notes: long,
+        })
+        .parse(p);
+      const id = v.id || uid();
+      s.customers = s.customers.filter((x) => x.id !== id).concat({ ...v, id });
+      target = id;
+      break;
+    }
+    case "order": {
+      const details = enquirySchema.parse(p.details);
+      const id = p.orderId || uid();
+      let o = s.orders.find((x) => x.id === id);
+      if (o) editable(o);
+      let customer = s.customers.find(
+        (x) => x.email.toLowerCase() === details.email.toLowerCase(),
+      );
+      if (!customer) {
+        customer = {
+          id: uid(),
+          name: details.name,
+          company: details.company,
+          email: details.email,
+          phone: details.phone,
+          notes: "",
+        };
+        s.customers.push(customer);
+      }
+      const items = z
+        .array(z.object({ recipeId: short, quantity: count }))
+        .max(100)
+        .parse(p.items || []);
+      if (new Set(items.map((i) => i.recipeId)).size !== items.length)
+        throw Error(
+          "Combine quantities for each recipe variant into one order line",
+        );
+      if (items.some((i) => !s.recipes.some((r) => r.id === i.recipeId)))
+        throw Error("Recipe not found");
+      if (p.enquiryId && s.orders.some((x) => x.enquiryId === p.enquiryId))
+        throw Error("This enquiry already has an order");
+      const cleanDetails = {
+        ...details,
+        requirements: details.requirements.map((r) => ({
+          ...r,
+          reviewed: false,
+        })),
+      };
+      if (o) {
+        o.details = cleanDetails;
+        o.items = items;
+        o.customerId = customer.id;
+        o.allergyReviewed = false;
+        o.status = "enquiry";
+      } else {
+        s.orders.push({
+          id,
+          reference: `EM-${id.slice(0, 8).toUpperCase()}`,
+          customerId: customer.id,
+          enquiryId: p.enquiryId,
+          details: cleanDetails,
+          status: "enquiry",
+          items,
+          quotes: [],
+          allergyReviewed: false,
+          consumed: false,
+          reservations: [],
+        });
+      }
+      target = id;
+      break;
+    }
+    case "quote": {
+      const o = findOrder();
+      editable(o);
+      if (!o.items.length) throw Error("Add meal quantities first");
+      const v = z.object({ net: cents, notes: long }).parse(p);
+      const vatRate = s.settings.vatRate;
+      o.quotes.push({
+        version: o.quotes.length + 1,
+        net: v.net,
+        vatRate,
+        total: Math.round(v.net * (1 + vatRate / 100)),
+        notes: v.notes,
+        at,
+      });
+      o.status = "quote";
+      break;
+    }
+    case "allergy-review": {
+      const o = findOrder();
+      editable(o);
+      const rows = z
+        .array(
+          z.object({
+            reference: short.min(1),
+            requirements: short,
+            meal: short.min(1),
+            reviewed: z.literal(true),
+          }),
+        )
+        .parse(p.requirements);
+      if (rows.length !== o.details.requirements.length)
+        throw Error("Review every attendee requirement");
+      if (
+        rows.some(
+          (r, i) =>
+            r.reference !== o.details.requirements[i].reference ||
+            r.requirements !== o.details.requirements[i].requirements,
+        )
+      )
+        throw Error("Requirements changed; reload and review");
+      if (rows.some((r) => !o.items.some((item) => item.recipeId === r.meal)))
+        throw Error("Assign each attendee to a meal on this order");
+      for (const item of o.items)
+        if (rows.filter((r) => r.meal === item.recipeId).length > item.quantity)
+          throw Error("Assigned guests exceed the portions for this meal");
+      o.details.requirements = rows;
+      o.allergyReviewed = true;
+      break;
+    }
+    case "stage": {
+      const o = findOrder();
+      const next = z.enum([...stages, "cancelled", "declined"]).parse(p.status);
+      if (next === o.status) break;
+      if (["delivered", "cancelled", "declined"].includes(o.status))
+        throw Error("This order is closed");
+      if (["cancelled", "declined"].includes(next)) {
+        if (o.status === "delivered")
+          throw Error("Delivered orders cannot be cancelled");
+        o.reservations = [];
+        o.status = next;
+        break;
+      }
+      if (next === "confirmed") {
+        if (o.status !== "quote" || !o.quotes.length || !o.items.length)
+          throw Error("Prepare a quote before confirming");
+        if (!o.allergyReviewed)
+          throw Error("Confirm dietary and allergy review before accepting");
+        if (!o.details.date || !o.details.address)
+          throw Error("Confirm the date and venue address first");
+        o.costSnapshot = snapshot(s, o);
+        reserve(s, o);
+      } else if (
+        next === "ingredients needed" ||
+        next === "ingredients ready"
+      ) {
+        if (
+          !["confirmed", "ingredients needed", "ingredients ready"].includes(
+            o.status,
+          )
+        )
+          throw Error("Confirm the order first");
+        const missing = reserve(s, o);
+        if (next === "ingredients ready" && missing.length)
+          throw Error(
+            "Insufficient dated stock; receive stock before marking ready",
+          );
+      } else if (next === "prepared") {
+        if (o.status !== "ingredients ready")
+          throw Error("Mark ingredients ready first");
+        if (o.consumed) throw Error("Ingredients already consumed");
+        if (reserve(s, o).length) throw Error("Stock availability changed");
+        for (const r of o.reservations) {
+          const b = s.batches.find((x) => x.id === r.batchId)!;
+          b.quantity -= r.quantity;
+          s.movements.push({
+            id: uid(),
+            batchId: b.id,
+            quantity: -r.quantity,
+            reason: "Preparation",
+            orderId: o.id,
+            at,
+          });
+        }
+        o.consumed = true;
+        o.reservations = [];
+      } else if (
+        stages.indexOf(next as any) !==
+        stages.indexOf(o.status as any) + 1
+      )
+        throw Error("Follow the next preparation stage");
+      o.status = next;
+      break;
+    }
+    case "stock-receive": {
+      const v = z
+        .object({
+          ingredientId: short,
+          quantity: positive,
+          location: z.enum(["fridge", "freezer", "ambient"]),
+          intake: date,
+          expiry: maybeDate,
+          dateType: z.enum(["use-by", "best-before"]),
+          opened: maybeDate,
+          frozen: maybeDate,
+          thawed: maybeDate,
+          notes: long,
+          purchaseId: short.optional(),
+        })
+        .parse(p);
+      const i = s.ingredients.find((x) => x.id === v.ingredientId);
+      if (!i) throw Error("Ingredient not found");
+      if (v.expiry && v.expiry < v.intake)
+        throw Error("Expiry is before intake");
+      const id = uid();
+      s.batches.push({ ...v, id, unitCost: i.packCost / i.packQuantity });
+      s.movements.push({
+        id: uid(),
+        batchId: id,
+        quantity: v.quantity,
+        reason: "Stock intake",
+        at,
+      });
+      if (v.purchaseId) {
+        const po = s.purchases.find((x) => x.id === v.purchaseId);
+        if (!po || po.status === "received")
+          throw Error("Purchase is missing or already received");
+        if (po.ingredientId !== v.ingredientId || po.quantity !== v.quantity)
+          throw Error("Received item and quantity must match the purchase");
+        po.status = "received";
+      }
+      target = id;
+      break;
+    }
+    case "stock-adjust": {
+      const v = z
+        .object({
+          batchId: short,
+          quantity: nonnegative,
+          reason: short.min(3),
+          location: z.enum(["fridge", "freezer", "ambient"]),
+          expiry: maybeDate,
+          opened: maybeDate,
+          frozen: maybeDate,
+          thawed: maybeDate,
+        })
+        .parse(p);
+      const b = s.batches.find((x) => x.id === v.batchId);
+      if (!b) throw Error("Batch not found");
+      const delta = v.quantity - b.quantity;
+      Object.assign(b, v);
+      s.movements.push({
+        id: uid(),
+        batchId: b.id,
+        quantity: delta,
+        reason: v.reason,
+        at,
+      });
+      for (const o of s.orders.filter(
+        (x) =>
+          !x.consumed &&
+          x.costSnapshot &&
+          !["cancelled", "declined", "delivered"].includes(x.status),
+      )) {
+        if (reserve(s, o).length) o.status = "ingredients needed";
+      }
+      target = b.id;
+      break;
+    }
+    case "supplier": {
+      const v = z
+        .object({
+          id: short.optional(),
+          name: short.min(1),
+          email: z.string().email(),
+          phone: short,
+          deliveryCharge: cents,
+          minimumOrder: cents,
+          leadDays: nonnegative.int(),
+          notes: long,
+        })
+        .parse(p);
+      const id = v.id || uid(),
+        old = s.suppliers.find((x) => x.id === id);
+      s.suppliers = s.suppliers
+        .filter((x) => x.id !== id)
+        .concat({ ...v, id, comms: old?.comms || [] });
+      target = id;
+      break;
+    }
+    case "supplier-note": {
+      const v = z.object({ supplierId: short, message: long.min(1) }).parse(p);
+      const sup = s.suppliers.find((x) => x.id === v.supplierId);
+      if (!sup) throw Error("Supplier not found");
+      sup.comms.push({ at, message: v.message });
+      target = sup.id;
+      break;
+    }
+    case "purchase": {
+      const v = z
+        .object({
+          supplierId: short,
+          ingredientId: short,
+          quantity: positive,
+          cost: cents,
+          eta: date,
+          notes: long,
+        })
+        .parse(p);
+      if (
+        !s.suppliers.some((x) => x.id === v.supplierId) ||
+        !s.ingredients.some((x) => x.id === v.ingredientId)
+      )
+        throw Error("Select a supplier and ingredient");
+      s.purchases.push({ ...v, id: uid(), status: "ordered" });
+      break;
+    }
+    case "waste": {
+      const v = z
+        .object({
+          orderId: short,
+          ingredientId: short,
+          recipeId: short,
+          batchId: short,
+          category: z.enum([
+            "preparation trimmings",
+            "spoilage",
+            "unserved portions",
+            "plate waste",
+          ]),
+          quantity: positive,
+          unit: z.enum(["g", "ml", "each", "portions"]),
+          weightGrams: nonnegative,
+          reason: short.min(1),
+          date: date,
+        })
+        .parse(p);
+      const o = s.orders.find((x) => x.id === v.orderId);
+      let cost = 0;
+      if (v.category === "spoilage") {
+        const b = s.batches.find((x) => x.id === v.batchId);
+        const i = b && s.ingredients.find((x) => x.id === b.ingredientId);
+        if (!b || !i || v.ingredientId !== i.id || v.unit !== i.unit)
+          throw Error("Select a stock batch with its matching unit");
+        if (v.quantity > b.quantity) throw Error("Waste exceeds stock");
+        b.quantity -= v.quantity;
+        cost = Math.round(v.quantity * b.unitCost);
+        s.movements.push({
+          id: uid(),
+          batchId: b.id,
+          quantity: -v.quantity,
+          reason: "Spoilage",
+          at,
+        });
+        for (const x of s.orders.filter(
+          (x) =>
+            !x.consumed &&
+            x.costSnapshot &&
+            !["cancelled", "declined", "delivered"].includes(x.status),
+        ))
+          if (reserve(s, x).length) x.status = "ingredients needed";
+      } else {
+        if (!o || !o.consumed)
+          throw Error("Select an order whose ingredients have been prepared");
+        if (v.category === "preparation trimmings") {
+          const line = o.costSnapshot?.items
+            .flatMap((item) =>
+              item.lines.map((l) => ({
+                ...l,
+                orderQty: l.quantity * item.quantity,
+              })),
+            )
+            .filter((l) => l.ingredientId === v.ingredientId);
+          const i = s.ingredients.find((x) => x.id === v.ingredientId);
+          if (!line?.length || !i || v.unit !== i.unit)
+            throw Error("Select an ingredient used by this order");
+          const max = line.reduce((a, l) => a + l.orderQty, 0);
+          const prior = s.waste
+            .filter(
+              (w) =>
+                w.orderId === o.id &&
+                w.ingredientId === i.id &&
+                w.category === v.category,
+            )
+            .reduce((a, w) => a + w.quantity, 0);
+          if (v.quantity + prior > max)
+            throw Error("Trimmings exceed the ingredient quantity used");
+          cost = Math.round((v.quantity * line[0].cost) / line[0].quantity);
+        } else {
+          const item = o.costSnapshot?.items.find(
+            (x) => x.recipeId === v.recipeId,
+          );
+          if (!item || v.unit !== "portions")
+            throw Error(
+              "Select a meal and record portions; weight is entered separately",
+            );
+          const prior = s.waste
+            .filter(
+              (w) =>
+                w.orderId === o.id &&
+                w.recipeId === v.recipeId &&
+                ["unserved portions", "plate waste"].includes(w.category),
+            )
+            .reduce((a, w) => a + w.quantity, 0);
+          if (prior + v.quantity > item.quantity)
+            throw Error("Waste exceeds prepared portions");
+          cost = Math.round(item.unitCost * v.quantity);
+        }
+      }
+      s.waste.push({ ...v, id: uid(), cost });
+      break;
+    }
+    case "feedback": {
+      const v = z
+        .object({
+          customerId: short,
+          orderId: short,
+          rating: positive.int().max(5),
+          comment: long,
+          date: date,
+        })
+        .parse(p);
+      if (
+        !s.orders.some(
+          (o) => o.id === v.orderId && o.customerId === v.customerId,
+        )
+      )
+        throw Error("Order does not belong to customer");
+      s.feedback.push({ ...v, id: uid() });
+      break;
+    }
+    case "finance": {
+      const v = z
+        .object({
+          type: z.enum(["income", "expense"]),
+          amount: cents,
+          category: short.min(1),
+          description: short.min(1),
+          date: date,
+          orderId: short,
+        })
+        .parse(p);
+      if (v.orderId && !s.orders.some((x) => x.id === v.orderId))
+        throw Error("Order not found");
+      s.finance.push({ ...v, id: uid() });
+      break;
+    }
+    case "draft": {
+      const v = z
+        .object({
+          to: z.string().email(),
+          subject: short.min(1),
+          body: long.min(1),
+          customerId: short.optional(),
+          supplierId: short.optional(),
+        })
+        .parse(p);
+      s.drafts.push({ ...v, id: uid(), at });
+      break;
+    }
+    case "route": {
+      const o = findOrder();
+      o.route = z
+        .object({
+          miles: nonnegative,
+          minutes: nonnegative,
+          departure: short,
+          returnTrip: z.boolean(),
+          extraCost: cents,
+        })
+        .transform((v) => ({
+          ...v,
+          fuelCost: fuelCost(v.miles, s.settings.mpg, s.settings.fuelPrice),
+          source: "Manual estimate",
+          at,
+        }))
+        .parse(p);
+      break;
+    }
+    case "analysis": {
+      const o = findOrder();
+      o.analysis = p.analysis;
+      break;
+    }
+    default:
+      throw Error("Unknown action");
+  }
+  s.audit.push({ at, actor, action: command.type, target });
+  s.commands.push(command.id);
+  s.commands = s.commands.slice(-500);
+  return s;
+}

@@ -1,0 +1,22 @@
+name: CRM follow-up digest
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the idempotent CRM digest
+        env:
+          CRM_DIGEST_URL: ${{ secrets.CRM_DIGEST_URL }}
+          CRM_CRON_SECRET: ${{ secrets.CRM_CRON_SECRET }}
+        run: |
+          test -n "$CRM_DIGEST_URL"
+          test -n "$CRM_CRON_SECRET"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $CRM_CRON_SECRET" \
+            "$CRM_DIGEST_URL"

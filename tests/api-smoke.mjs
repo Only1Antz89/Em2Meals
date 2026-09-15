@@ -23,6 +23,8 @@ for (const path of [
   "/api/admin/route",
   "/api/admin/places",
   "/api/admin/send",
+  "/api/admin/research",
+  "/api/admin/delivery",
 ]) {
   const r = await request(path, path.endsWith("state") ? null : {}, {
     headers: { Origin: base, "Content-Type": "application/json" },
@@ -88,6 +90,11 @@ const enq = live.json.enquiries.find(
 );
 assert.equal(enq.details.requirements[0].reviewed, false);
 assert.equal(enq.details.requirements[0].meal, "");
+const imported = live.json.state.orders.filter(o=>o.enquiryId===enq.id);
+assert.equal(imported.length,1);
+assert.equal(imported[0].status,"enquiry");
+assert.ok(live.json.state.customers.some(c=>c.id===imported[0].customerId));
+assert.equal(imported[0].reservations.length,0);
 const sample = await request("/api/admin/state?mode=sample");
 assert.equal(sample.status, 200);
 assert.equal(sample.json.enquiries.length, 0);

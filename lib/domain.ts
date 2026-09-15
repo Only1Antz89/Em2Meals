@@ -1,4 +1,28 @@
+import {
+  type FinanceExtra,
+  type Journey,
+  reportingCommand,
+  industries,
+} from "./reporting";
 import { z } from "zod";
+import {
+  type OperationsState,
+  type Place,
+  type Research,
+  type Usage,
+  type Proposal,
+  normaliseState,
+  nextReference,
+  reconcileStock,
+  consumeOrder,
+  invoiceDraft,
+  applyOperations,
+  tax,
+  categories,
+  seasons,
+  safeURL,
+  placeSchema,
+} from "./operations";
 export const uid = () => crypto.randomUUID();
 export const money = (n: number) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(
@@ -21,6 +45,7 @@ export const stages = [
   "delivered",
 ] as const;
 export type Ingredient = {
+  category?: (typeof categories)[number];
   id: string;
   name: string;
   unit: "g" | "ml" | "each";
@@ -32,6 +57,8 @@ export type Ingredient = {
   threshold: number;
 };
 export type Recipe = {
+  collections?: { year: number; season: (typeof seasons)[number] }[];
+  imageUrl?: string;
   id: string;
   name: string;
   variant: string;
@@ -44,6 +71,8 @@ export type Attendee = {
   reviewed: boolean;
 };
 export type Enquiry = {
+  locality?: string;
+  place?: Place;
   service: string;
   eventType: string;
   attendees: number;
@@ -64,6 +93,8 @@ export type Enquiry = {
   unknownDetails: string;
 };
 export type Quote = {
+  vat?: number;
+  priceMode?: "exclusive" | "inclusive";
   version: number;
   net: number;
   vatRate: number;
@@ -72,6 +103,11 @@ export type Quote = {
   at: string;
 };
 export type Order = {
+  createdAt?: string;
+  statusHistory?: { status: string; at: string }[];
+  acceptedAt?: string;
+  usage?: Usage[];
+  venueResearch?: Research;
   id: string;
   reference: string;
   customerId: string;
@@ -101,18 +137,34 @@ export type Order = {
   route?: {
     miles: number;
     minutes: number;
+    outboundMiles?: number;
+    outboundMinutes?: number;
+    returnMiles?: number;
+    returnMinutes?: number;
     fuelCost: number | null;
     source: string;
     at: string;
     departure: string;
+    returnDeparture?: string;
+    venueDurationMinutes?: number;
     returnTrip: boolean;
     extraCost: number;
+    parkingCost?: number;
+    otherCost?: number;
     mapUrl?: string;
   };
   analysis?: unknown;
 };
-export type State = {
+export type State = OperationsState & {
+  journeys: Journey[];
   settings: {
+    priceMode?: "exclusive" | "inclusive";
+    warningDays?: number;
+    urgentDays?: number;
+    businessName?: string;
+    businessAddress?: string;
+    vatNumber?: string;
+    paymentInstructions?: string;
     kitchen: string;
     vatRate: number;
     vehicle: string;
@@ -124,6 +176,7 @@ export type State = {
   ingredients: Ingredient[];
   recipes: Recipe[];
   customers: {
+    industry?: string;
     id: string;
     name: string;
     company: string;
@@ -147,6 +200,7 @@ export type State = {
     unitCost: number;
   }[];
   movements: {
+    cost?: number;
     id: string;
     batchId: string;
     quantity: number;
@@ -155,6 +209,13 @@ export type State = {
     at: string;
   }[];
   suppliers: {
+    contactName?: string;
+    contactRole?: string;
+    website?: string;
+    address?: string;
+    logoUrl?: string;
+    businessDetails?: string;
+    research?: Research;
     id: string;
     name: string;
     email: string;
@@ -166,6 +227,10 @@ export type State = {
     comms: { at: string; message: string }[];
   }[];
   purchases: {
+    orderIds?: string[];
+    at?: string;
+    receivedQuantity?: number;
+    requestId?: string;
     id: string;
     supplierId: string;
     ingredientId: string;
@@ -176,6 +241,7 @@ export type State = {
     notes: string;
   }[];
   waste: {
+    movementId?: string;
     id: string;
     orderId: string;
     ingredientId: string;
@@ -185,6 +251,7 @@ export type State = {
     quantity: number;
     unit: string;
     weightGrams: number;
+    weightMeasured?: boolean;
     cost: number;
     reason: string;
     date: string;
@@ -197,7 +264,31 @@ export type State = {
     comment: string;
     date: string;
   }[];
-  finance: {
+  engagements: {
+    id: string;
+    customerId: string;
+    orderId?: string;
+    type: "call" | "email" | "meeting" | "note";
+    direction: "inbound" | "outbound" | "internal";
+    summary: string;
+    occurredAt: string;
+    createdAt: string;
+    actor: string;
+  }[];
+  followUps: {
+    id: string;
+    customerId: string;
+    orderId?: string;
+    dueDate: string;
+    note: string;
+    status: "open" | "completed" | "cancelled";
+    completedAt?: string;
+    createdAt: string;
+    actor: string;
+  }[];
+  finance: (FinanceExtra & {
+    invoiceId?: string;
+    paymentReference?: string;
     id: string;
     type: string;
     amount: number;
@@ -205,8 +296,13 @@ export type State = {
     description: string;
     date: string;
     orderId: string;
-  }[];
+  })[];
   drafts: {
+    proposal?: Proposal;
+    sentAt?: string;
+    deliveryStatus?: "sending" | "uncertain" | "failed" | "sent";
+    superseded?: boolean;
+    purchaseConfirmed?: boolean;
     id: string;
     to: string;
     subject: string;
@@ -220,6 +316,11 @@ export type State = {
 };
 export function emptyState(): State {
   return {
+    schemaVersion: 4,
+    journeys: [],
+    offerings: [],
+    invoices: [],
+    sequences: {},
     settings: {
       kitchen: "",
       vatRate: 0,
@@ -239,6 +340,8 @@ export function emptyState(): State {
     purchases: [],
     waste: [],
     feedback: [],
+    engagements: [],
+    followUps: [],
     finance: [],
     drafts: [],
     audit: [],
@@ -266,6 +369,8 @@ const time = z.union([
 ]);
 export const enquirySchema = z
   .object({
+    place: placeSchema.optional(),
+    locality: short.optional(),
     service: z.enum(["private", "corporate"]),
     eventType: short.min(1),
     attendees: count,
@@ -311,6 +416,14 @@ export function fuelCost(miles: number, mpg: number, pricePounds: number) {
 }
 export function needs(s: State, o: Order) {
   const n: Record<string, number> = {};
+  if (o.costSnapshot) {
+    for (const item of o.costSnapshot.items)
+      for (const l of item.lines)
+        n[l.ingredientId] =
+          (n[l.ingredientId] || 0) + l.quantity * item.quantity;
+    for (const u of o.usage || []) n[u.ingredientId] = u.quantity;
+    return n;
+  }
   for (const line of o.items) {
     const r = s.recipes.find((x) => x.id === line.recipeId);
     if (!r) throw Error("Recipe is missing");
@@ -486,7 +599,7 @@ export function applyCommand(
   actor: string,
 ): State {
   if (original.commands.includes(command.id)) return original;
-  const s = structuredClone(original),
+  const s = normaliseState(structuredClone(original)),
     p = command.payload,
     at = new Date().toISOString();
   let target = "";
@@ -506,6 +619,13 @@ export function applyCommand(
     case "settings": {
       s.settings = z
         .object({
+          priceMode: z.enum(["exclusive", "inclusive"]).optional(),
+          warningDays: nonnegative.int().max(365).optional(),
+          urgentDays: nonnegative.int().max(365).optional(),
+          businessName: short.optional(),
+          businessAddress: short.optional(),
+          vatNumber: short.optional(),
+          paymentInstructions: long.optional(),
           kitchen: short,
           vatRate: nonnegative.max(100),
           vehicle: short,
@@ -515,6 +635,8 @@ export function applyCommand(
           ownerNotes: long,
         })
         .parse(p);
+      if ((s.settings.urgentDays ?? 3) > (s.settings.warningDays ?? 7))
+        throw Error("Urgent warning must be within the warning window");
       break;
     }
     case "ingredient": {
@@ -522,6 +644,7 @@ export function applyCommand(
         .object({
           id: short.optional(),
           name: short.min(1),
+          category: z.enum(categories).optional(),
           unit: z.enum(["g", "ml", "each"]),
           packQuantity: positive,
           packCost: cents,
@@ -562,6 +685,31 @@ export function applyCommand(
       s.ingredients = s.ingredients
         .filter((x) => x.id !== id)
         .concat({ ...v, id });
+      const preferred = s.offerings.find(
+        (x) => x.ingredientId === id && x.preferred,
+      );
+      if (!preferred && v.supplierId)
+        s.offerings.push({
+          id: uid(),
+          ingredientId: id,
+          supplierId: v.supplierId,
+          preferred: true,
+          packQuantity: v.packQuantity,
+          packCost: v.packCost,
+          vatRate: null,
+          priceMode: "exclusive",
+        });
+      else if (
+        preferred &&
+        (old?.packCost !== v.packCost ||
+          old?.packQuantity !== v.packQuantity ||
+          old?.supplierId !== v.supplierId)
+      )
+        Object.assign(preferred, {
+          packCost: v.packCost,
+          packQuantity: v.packQuantity,
+          supplierId: v.supplierId,
+        });
       for (const o of s.orders.filter((x) =>
         ["enquiry", "quote"].includes(x.status),
       ))
@@ -575,6 +723,16 @@ export function applyCommand(
           id: short.optional(),
           name: short.min(1),
           variant: short.min(1),
+          imageUrl: safeURL.optional(),
+          collections: z
+            .array(
+              z.object({
+                year: z.number().int().min(2000).max(2200),
+                season: z.enum(seasons),
+              }),
+            )
+            .max(100)
+            .optional(),
           lines: z
             .array(z.object({ ingredientId: short.min(1), quantity: positive }))
             .min(1)
@@ -587,6 +745,15 @@ export function applyCommand(
         throw Error("Ingredient not found");
       if (
         v.id &&
+        (() => {
+          const old = s.recipes.find((r) => r.id === v.id);
+          return (
+            !old ||
+            old.name !== v.name ||
+            old.variant !== v.variant ||
+            JSON.stringify(old.lines) !== JSON.stringify(v.lines)
+          );
+        })() &&
         s.orders.some(
           (o) =>
             ![
@@ -616,6 +783,7 @@ export function applyCommand(
       const v = z
         .object({
           id: short.optional(),
+          industry: z.enum(industries).optional(),
           name: short.min(1),
           company: short,
           email: z.string().email(),
@@ -629,12 +797,17 @@ export function applyCommand(
       break;
     }
     case "order": {
-      const details = enquirySchema.parse(p.details);
+      // Historical website enquiries may be imported after their event date.
+      const details =
+        p.imported === true && actor === "system:enquiry-import"
+          ? enquirySchema.innerType().parse(p.details)
+          : enquirySchema.parse(p.details);
       const id = p.orderId || uid();
-      let o = s.orders.find((x) => x.id === id);
+      const o = s.orders.find((x) => x.id === id);
       if (o) editable(o);
       let customer = s.customers.find(
-        (x) => x.email.toLowerCase() === details.email.toLowerCase(),
+        (x) =>
+          x.email.trim().toLowerCase() === details.email.trim().toLowerCase(),
       );
       if (!customer) {
         customer = {
@@ -667,15 +840,26 @@ export function applyCommand(
         })),
       };
       if (o) {
+        if (
+          cleanDetails.place?.id === o.details.place?.id &&
+          (cleanDetails.address !== o.details.address ||
+            cleanDetails.venue !== o.details.venue ||
+            cleanDetails.postcode !== o.details.postcode)
+        )
+          cleanDetails.place = undefined;
         o.details = cleanDetails;
         o.items = items;
         o.customerId = customer.id;
         o.allergyReviewed = false;
         o.status = "enquiry";
+        o.statusHistory ||= [];
+        o.statusHistory.push({ status: "enquiry", at });
       } else {
         s.orders.push({
           id,
-          reference: `EM-${id.slice(0, 8).toUpperCase()}`,
+          createdAt: at,
+          statusHistory: [{ status: "enquiry", at }],
+          reference: nextReference(s, "EM"),
           customerId: customer.id,
           enquiryId: p.enquiryId,
           details: cleanDetails,
@@ -694,17 +878,27 @@ export function applyCommand(
       const o = findOrder();
       editable(o);
       if (!o.items.length) throw Error("Add meal quantities first");
-      const v = z.object({ net: cents, notes: long }).parse(p);
+      const v = z
+        .object({
+          net: cents,
+          notes: long,
+          priceMode: z.enum(["exclusive", "inclusive"]).optional(),
+        })
+        .parse(p);
       const vatRate = s.settings.vatRate;
+      const priceMode = v.priceMode || s.settings.priceMode || "exclusive";
+      const totals = tax(v.net, vatRate, priceMode);
       o.quotes.push({
         version: o.quotes.length + 1,
-        net: v.net,
+        ...totals,
         vatRate,
-        total: Math.round(v.net * (1 + vatRate / 100)),
+        priceMode,
         notes: v.notes,
         at,
       });
       o.status = "quote";
+      o.statusHistory ||= [];
+      o.statusHistory.push({ status: "quote", at });
       break;
     }
     case "allergy-review": {
@@ -748,8 +942,14 @@ export function applyCommand(
       if (["cancelled", "declined"].includes(next)) {
         if (o.status === "delivered")
           throw Error("Delivered orders cannot be cancelled");
+        if (["prepared", "cooked"].includes(o.status) && !o.consumed)
+          throw Error(
+            "Reconcile actual consumed/wasted ingredients before cancelling a prepared order",
+          );
         o.reservations = [];
         o.status = next;
+        o.statusHistory ||= [];
+        o.statusHistory.push({ status: next, at });
         break;
       }
       if (next === "confirmed") {
@@ -760,7 +960,10 @@ export function applyCommand(
         if (!o.details.date || !o.details.address)
           throw Error("Confirm the date and venue address first");
         o.costSnapshot = snapshot(s, o);
-        reserve(s, o);
+        o.acceptedAt = at;
+        o.status = "confirmed";
+        reconcileStock(s);
+        invoiceDraft(s, o, at);
       } else if (
         next === "ingredients needed" ||
         next === "ingredients ready"
@@ -779,28 +982,33 @@ export function applyCommand(
       } else if (next === "prepared") {
         if (o.status !== "ingredients ready")
           throw Error("Mark ingredients ready first");
-        if (o.consumed) throw Error("Ingredients already consumed");
-        if (reserve(s, o).length) throw Error("Stock availability changed");
-        for (const r of o.reservations) {
-          const b = s.batches.find((x) => x.id === r.batchId)!;
-          b.quantity -= r.quantity;
-          s.movements.push({
-            id: uid(),
-            batchId: b.id,
-            quantity: -r.quantity,
-            reason: "Preparation",
-            orderId: o.id,
-            at,
-          });
-        }
-        o.consumed = true;
-        o.reservations = [];
+        reconcileStock(s);
+        if (
+          Object.entries(needs(s, o)).some(
+            ([id, q]) =>
+              q -
+                o.reservations
+                  .filter(
+                    (r) =>
+                      s.batches.find((b) => b.id === r.batchId)
+                        ?.ingredientId === id,
+                  )
+                  .reduce((n, r) => n + r.quantity, 0) >
+              1e-6,
+          )
+        )
+          throw Error("Stock availability changed");
+      } else if (next === "packaged") {
+        if (o.status !== "cooked") throw Error("Mark cooked first");
+        consumeOrder(s, o, at);
       } else if (
         stages.indexOf(next as any) !==
         stages.indexOf(o.status as any) + 1
       )
         throw Error("Follow the next preparation stage");
       o.status = next;
+      o.statusHistory ||= [];
+      o.statusHistory.push({ status: next, at });
       break;
     }
     case "stock-receive": {
@@ -824,7 +1032,16 @@ export function applyCommand(
       if (v.expiry && v.expiry < v.intake)
         throw Error("Expiry is before intake");
       const id = uid();
-      s.batches.push({ ...v, id, unitCost: i.packCost / i.packQuantity });
+      const purchase = v.purchaseId
+        ? s.purchases.find((po) => po.id === v.purchaseId)
+        : undefined;
+      s.batches.push({
+        ...v,
+        id,
+        unitCost: purchase
+          ? purchase.cost / purchase.quantity
+          : i.packCost / i.packQuantity,
+      });
       s.movements.push({
         id: uid(),
         batchId: id,
@@ -836,9 +1053,15 @@ export function applyCommand(
         const po = s.purchases.find((x) => x.id === v.purchaseId);
         if (!po || po.status === "received")
           throw Error("Purchase is missing or already received");
-        if (po.ingredientId !== v.ingredientId || po.quantity !== v.quantity)
-          throw Error("Received item and quantity must match the purchase");
-        po.status = "received";
+        if (
+          po.ingredientId !== v.ingredientId ||
+          v.quantity > po.quantity - (po.receivedQuantity || 0)
+        )
+          throw Error(
+            "Received item must match and quantity must not exceed the outstanding purchase",
+          );
+        po.receivedQuantity = (po.receivedQuantity || 0) + v.quantity;
+        po.status = po.receivedQuantity >= po.quantity ? "received" : "ordered";
       }
       target = id;
       break;
@@ -864,17 +1087,10 @@ export function applyCommand(
         id: uid(),
         batchId: b.id,
         quantity: delta,
+        cost: Math.round(Math.abs(delta) * b.unitCost),
         reason: v.reason,
         at,
       });
-      for (const o of s.orders.filter(
-        (x) =>
-          !x.consumed &&
-          x.costSnapshot &&
-          !["cancelled", "declined", "delivered"].includes(x.status),
-      )) {
-        if (reserve(s, o).length) o.status = "ingredients needed";
-      }
       target = b.id;
       break;
     }
@@ -887,7 +1103,23 @@ export function applyCommand(
           phone: short,
           deliveryCharge: cents,
           minimumOrder: cents,
-          leadDays: nonnegative.int(),
+          leadDays: nonnegative.int().max(365),
+          contactName: short.optional(),
+          contactRole: short.optional(),
+          website: safeURL.optional(),
+          address: short.optional(),
+          logoUrl: safeURL.optional(),
+          businessDetails: long.optional(),
+          research: z
+            .object({
+              key: long,
+              text: z.string().max(30000),
+              at: short,
+              sources: z
+                .array(z.object({ title: short, url: safeURL }))
+                .max(50),
+            })
+            .optional(),
           notes: long,
         })
         .parse(p);
@@ -923,7 +1155,13 @@ export function applyCommand(
         !s.ingredients.some((x) => x.id === v.ingredientId)
       )
         throw Error("Select a supplier and ingredient");
-      s.purchases.push({ ...v, id: uid(), status: "ordered" });
+      s.purchases.push({
+        ...v,
+        id: uid(),
+        status: "ordered",
+        at,
+        receivedQuantity: 0,
+      });
       break;
     }
     case "waste": {
@@ -942,12 +1180,18 @@ export function applyCommand(
           quantity: positive,
           unit: z.enum(["g", "ml", "each", "portions"]),
           weightGrams: nonnegative,
+          weightMeasured: z.preprocess(
+            (v) => (v === "yes" ? true : v === "no" ? false : v),
+            z.boolean().optional(),
+          ),
           reason: short.min(1),
           date: date,
         })
         .parse(p);
       const o = s.orders.find((x) => x.id === v.orderId);
       let cost = 0;
+      let movementId: string | undefined;
+      if (v.orderId && !o) throw Error("Order not found");
       if (v.category === "spoilage") {
         const b = s.batches.find((x) => x.id === v.batchId);
         const i = b && s.ingredients.find((x) => x.id === b.ingredientId);
@@ -961,17 +1205,13 @@ export function applyCommand(
           batchId: b.id,
           quantity: -v.quantity,
           reason: "Spoilage",
-          at,
+          cost,
+          orderId: v.orderId || undefined,
+          at: `${v.date}T12:00:00.000Z`,
         });
-        for (const x of s.orders.filter(
-          (x) =>
-            !x.consumed &&
-            x.costSnapshot &&
-            !["cancelled", "declined", "delivered"].includes(x.status),
-        ))
-          if (reserve(s, x).length) x.status = "ingredients needed";
+        movementId = s.movements.at(-1)!.id;
       } else {
-        if (!o || !o.consumed)
+        if (!o || (!o.consumed && !["prepared", "cooked"].includes(o.status)))
           throw Error("Select an order whose ingredients have been prepared");
         if (v.category === "preparation trimmings") {
           const line = o.costSnapshot?.items
@@ -1018,7 +1258,7 @@ export function applyCommand(
           cost = Math.round(item.unitCost * v.quantity);
         }
       }
-      s.waste.push({ ...v, id: uid(), cost });
+      s.waste.push({ ...v, id: uid(), cost, movementId });
       break;
     }
     case "feedback": {
@@ -1038,6 +1278,72 @@ export function applyCommand(
       )
         throw Error("Order does not belong to customer");
       s.feedback.push({ ...v, id: uid() });
+      break;
+    }
+    case "crm-engagement": {
+      const v = z
+        .object({
+          customerId: short.min(1),
+          orderId: short.optional(),
+          type: z.enum(["call", "email", "meeting", "note"]),
+          direction: z.enum(["inbound", "outbound", "internal"]),
+          summary: long.min(1),
+          occurredAt: z.string().datetime(),
+        })
+        .parse(p);
+      if (!s.customers.some((c) => c.id === v.customerId))
+        throw Error("Customer not found");
+      if (
+        v.orderId &&
+        !s.orders.some(
+          (o) => o.id === v.orderId && o.customerId === v.customerId,
+        )
+      )
+        throw Error("Order does not belong to customer");
+      const id = uid();
+      s.engagements.push({ ...v, id, createdAt: at, actor });
+      target = id;
+      break;
+    }
+    case "crm-follow-up": {
+      const v = z
+        .object({
+          id: short.optional(),
+          customerId: short.min(1),
+          orderId: short.optional(),
+          dueDate: date,
+          note: long.min(1),
+          status: z
+            .enum(["open", "completed", "cancelled"])
+            .default("open"),
+        })
+        .parse(p);
+      if (!s.customers.some((c) => c.id === v.customerId))
+        throw Error("Customer not found");
+      if (
+        v.orderId &&
+        !s.orders.some(
+          (o) => o.id === v.orderId && o.customerId === v.customerId,
+        )
+      )
+        throw Error("Order does not belong to customer");
+      const existing = v.id
+        ? s.followUps.find((followUp) => followUp.id === v.id)
+        : undefined;
+      if (v.id && !existing) throw Error("Follow-up not found");
+      if (existing && existing.customerId !== v.customerId)
+        throw Error("Follow-up does not belong to customer");
+      const id = existing?.id || uid();
+      const followUp = {
+        ...v,
+        id,
+        createdAt: existing?.createdAt || at,
+        actor: existing?.actor || actor,
+        completedAt:
+          v.status === "completed" ? existing?.completedAt || at : undefined,
+      };
+      s.followUps = s.followUps.filter((x) => x.id !== id).concat(followUp);
+      target = id;
       break;
     }
     case "finance": {
@@ -1078,6 +1384,14 @@ export function applyCommand(
           departure: short,
           returnTrip: z.boolean(),
           extraCost: cents,
+          outboundMiles: nonnegative.optional(),
+          outboundMinutes: nonnegative.optional(),
+          returnMiles: nonnegative.optional(),
+          returnMinutes: nonnegative.optional(),
+          returnDeparture: short.optional(),
+          venueDurationMinutes: nonnegative.optional(),
+          parkingCost: cents.optional(),
+          otherCost: cents.optional(),
         })
         .transform((v) => ({
           ...v,
@@ -1093,9 +1407,15 @@ export function applyCommand(
       o.analysis = p.analysis;
       break;
     }
-    default:
-      throw Error("Unknown action");
+    default: {
+      const result =
+        applyOperations(s, command.type, p, at) ??
+        reportingCommand(s, command.type, p);
+      if (result === undefined) throw Error("Unknown action");
+      target = result;
+    }
   }
+  reconcileStock(s);
   s.audit.push({ at, actor, action: command.type, target });
   s.commands.push(command.id);
   s.commands = s.commands.slice(-500);

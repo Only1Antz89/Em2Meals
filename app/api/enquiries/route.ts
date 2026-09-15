@@ -1,5 +1,11 @@
 import { enquirySchema, uid } from "@/lib/domain";
-import { database, errorResponse, jsonBody, sameOrigin } from "@/lib/server";
+import {
+  database,
+  errorResponse,
+  jsonBody,
+  sameOrigin,
+  importEnquiries,
+} from "@/lib/server";
 export async function POST(req: Request) {
   try {
     sameOrigin(req);
@@ -35,6 +41,7 @@ export async function POST(req: Request) {
         throw Error(
           "This submission key was already used. Reload before submitting a different enquiry.",
         );
+      await importEnquiries().catch(() => undefined);
       return Response.json({
         reference: `ENQ-${existing.id.slice(0, 8).toUpperCase()}`,
       });
@@ -72,6 +79,7 @@ export async function POST(req: Request) {
       .first<{ id: string; payload_hash: string }>();
     if (!saved || saved.payload_hash !== hash)
       throw Error("Please reload and try again");
+    await importEnquiries().catch(() => undefined);
     return Response.json(
       { reference: `ENQ-${saved.id.slice(0, 8).toUpperCase()}` },
       { status: 201 },

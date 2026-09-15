@@ -21,7 +21,7 @@ export default function Page() {
         <p>
           When configured, Google Gemini helps the owner review requests and
           Google Maps supports venue and journey planning. Email delivery uses
-          Resend. The owner reviews dietary decisions and outgoing emails.
+          SMTP2GO. The owner reviews dietary decisions and outgoing emails.
           Public venue searches do not include guest names or allergy details.
         </p>
         <h2>Corrections and deletion</h2>

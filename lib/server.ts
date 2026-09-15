@@ -3,6 +3,8 @@ import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { emptyState, type State, type Command, applyCommand } from "./domain";
 import { sampleState } from "./sample";
+import { normaliseState, reconcileStock } from "./operations";
+import { ensureOperationsTables } from "./upgrade-server";
 export const config = () => env as unknown as Record<string, any>;
 export function database() {
   const db = config().DB as D1Database | undefined;
@@ -30,6 +32,7 @@ export function sameOrigin(req: Request) {
     throw Error("Invalid request origin");
 }
 export async function loadState(mode = "live") {
+  await ensureOperationsTables();
   const id = mode === "sample" ? "sample" : "live";
   const db = database();
   let row = await db
@@ -50,22 +53,53 @@ export async function loadState(mode = "live") {
       .first<{ data: string; revision: number }>();
   }
   if (!row) throw Error("Database unavailable");
-  return { state: JSON.parse(row.data) as State, revision: row.revision };
+  const original = JSON.parse(row.data) as State;
+  if (!original.schemaVersion || original.schemaVersion < 4) {
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO workspace_backups(id,data,revision,created_at) VALUES(?,?,?,?)",
+      )
+      .bind(`${id}:before-v4`, row.data, row.revision, new Date().toISOString())
+      .run();
+  }
+  const state = normaliseState(original);
+  reconcileStock(state);
+  if (id === "live" && state.drafts.length) {
+    const deliveries = await db
+      .prepare("SELECT id,status,updated_at FROM email_deliveries")
+      .all<{
+        id: string;
+        status: "sending" | "uncertain" | "failed" | "sent";
+        updated_at: string;
+      }>();
+    for (const delivery of deliveries.results) {
+      const draft = state.drafts.find((d) => d.id === delivery.id);
+      if (draft) {
+        draft.deliveryStatus = delivery.status;
+        if (delivery.status === "sent") draft.sentAt ||= delivery.updated_at;
+      }
+    }
+  }
+  return { state, revision: row.revision };
 }
 export async function commitState(
   mode: string,
   state: State,
   revision: number,
+  sendLock?: string,
 ) {
   const result = await database()
     .prepare(
-      "UPDATE workspaces SET data=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?",
+      "UPDATE workspaces SET data=?,revision=revision+1,updated_at=? WHERE id=? AND revision=? AND NOT EXISTS (SELECT 1 FROM workspace_send_locks WHERE workspace_id=? AND expires_at>? AND draft_id<>?)",
     )
     .bind(
       JSON.stringify(state),
       new Date().toISOString(),
       mode === "sample" ? "sample" : "live",
       revision,
+      mode === "sample" ? "sample" : "live",
+      new Date().toISOString(),
+      sendLock || "",
     )
     .run();
   if (result.meta.changes !== 1)
@@ -121,7 +155,7 @@ export function integrationStatus() {
   return {
     gemini: !!c.GEMINI_API_KEY,
     maps: !!c.GOOGLE_MAPS_API_KEY,
-    email: !!(c.RESEND_API_KEY && c.EMAIL_FROM),
+    email: !!(c.SMTP2GO_API_KEY && c.EMAIL_FROM),
     owner: !!(c.OWNER_EMAILS || c.OWNER_IDS),
   };
 }
@@ -129,4 +163,67 @@ export async function jsonBody(req: Request) {
   const raw = await req.text();
   if (raw.length > 100000) throw Error("Request is too large");
   return JSON.parse(raw);
+}
+
+export async function importEnquiries() {
+  await ensureOperationsTables();
+  const db = database();
+  const pending = await db
+    .prepare(
+      "SELECT e.id,e.payload FROM enquiries e LEFT JOIN enquiry_imports i ON i.enquiry_id=e.id WHERE i.status IS NULL OR i.status<>'imported' ORDER BY e.created_at LIMIT 100",
+    )
+    .all<{ id: string; payload: string }>();
+  for (const e of pending.results) {
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO enquiry_imports(enquiry_id,status,updated_at) VALUES(?,'pending',?)",
+      )
+      .bind(e.id, new Date().toISOString())
+      .run();
+    try {
+      let done = false;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const { state, revision } = await loadState("live");
+        if (state.orders.some((o) => o.enquiryId === e.id)) {
+          done = true;
+          break;
+        }
+        const next = applyCommand(
+          state,
+          {
+            id: `import-${e.id}`,
+            type: "order",
+            payload: {
+              details: JSON.parse(e.payload),
+              enquiryId: e.id,
+              items: [],
+              imported: true,
+            },
+          },
+          "system:enquiry-import",
+        );
+        try {
+          await commitState("live", next, revision);
+          done = true;
+          break;
+        } catch {
+          /* retry from the latest revision */
+        }
+      }
+      if (!done) throw Error("Workspace busy; import will retry");
+      await db
+        .prepare(
+          "UPDATE enquiry_imports SET status='imported',error=NULL,updated_at=? WHERE enquiry_id=?",
+        )
+        .bind(new Date().toISOString(), e.id)
+        .run();
+    } catch (error) {
+      await db
+        .prepare(
+          "UPDATE enquiry_imports SET status='pending',error=?,updated_at=? WHERE enquiry_id=?",
+        )
+        .bind((error as Error).message, new Date().toISOString(), e.id)
+        .run();
+    }
+  }
 }

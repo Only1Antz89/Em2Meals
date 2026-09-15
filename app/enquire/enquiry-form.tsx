@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, Plus, Trash2 } from "lucide-react";
+import { VenueSearch } from "@/components/venue-search";
 import { Button } from "@/components/ui/button";
 import { Field, Notes, Pick } from "@/components/form-controls";
 import { type Enquiry, today } from "@/lib/domain";
@@ -279,10 +280,24 @@ export default function EnquiryForm() {
               value={data.phone}
               onChange={(v) => update("phone", v)}
             />
+            <VenueSearch
+              onSelect={(place) =>
+                set((d) => ({
+                  ...d,
+                  place,
+                  venue: place.name,
+                  address: place.address,
+                  postcode: place.postcode || "",
+                  locality: place.locality || "",
+                }))
+              }
+            />
             <Field
               label="Venue"
               value={data.venue}
-              onChange={(v) => update("venue", v)}
+              onChange={(v) =>
+                set((d) => ({ ...d, venue: v, place: undefined }))
+              }
             />
             <Field
               label="Postcode"
@@ -293,7 +308,9 @@ export default function EnquiryForm() {
               label="Venue address"
               wide
               value={data.address}
-              onChange={(v) => update("address", v)}
+              onChange={(v) =>
+                set((d) => ({ ...d, address: v, place: undefined }))
+              }
             />
             <Notes
               label="Building access, accessibility, loading, parking and permits"

@@ -1,5 +1,6 @@
 import {
   owner,
+  importEnquiries,
   loadState,
   readEnquiries,
   errorResponse,
@@ -13,6 +14,7 @@ export async function GET(req: Request) {
       new URL(req.url).searchParams.get("mode") === "sample"
         ? "sample"
         : "live";
+    if (mode === "live") await importEnquiries();
     return Response.json(
       {
         ...(await loadState(mode)),

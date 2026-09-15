@@ -32,11 +32,13 @@ export function Pick({
           <SelectValue placeholder="Select…" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="__empty">Select…</SelectItem>
+          {!options.some(
+            (o) => (typeof o === "string" ? o : o.value) === "",
+          ) && <SelectItem value="__empty">Select…</SelectItem>}
           {options.map((o) => {
             const v = typeof o === "string" ? o : o.value;
             return (
-              <SelectItem key={v} value={v}>
+              <SelectItem key={v} value={v || "__empty"}>
                 {typeof o === "string" ? o : o.label}
               </SelectItem>
             );

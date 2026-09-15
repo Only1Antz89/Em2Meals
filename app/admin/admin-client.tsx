@@ -1,11 +1,5 @@
 "use client";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { useRef, useEffect, useState, type ReactNode } from "react";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -24,7 +18,6 @@ import {
   CheckCircle2,
   ArrowRight,
   Send,
-  Download,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -36,6 +29,9 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   SidebarInset,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
@@ -62,15 +58,25 @@ import {
   emptyState,
   alerts,
   money,
-  recipeCost,
   available,
-  recap,
   today,
   type State,
   type Order,
 } from "@/lib/domain";
 import OrderPanel from "./order-panel";
+import BusinessHub from "./business-hub";
+import WasteReports from "./waste-reports";
+import CRM from "./crm";
+import { RecipeLibrary, RecipeMetadata } from "./recipe-library";
+import {
+  ExpiryBadge,
+  StockSummary,
+  SupplierInsights,
+  UpcomingVenueResearch,
+} from "./operations-panels";
+import { categories, draftCurrent } from "@/lib/operations";
 import { Context, useOps, type Ops, type Edit, type Spec } from "./ops-context";
+import { useReportFilters } from "./report-controls";
 const navigation = [
   ["", "Overview", LayoutDashboard],
   ["orders", "Enquiries & orders", ClipboardList],
@@ -78,10 +84,37 @@ const navigation = [
   ["inventory", "Inventory", Package],
   ["expiry", "Storage & expiry", Clock],
   ["suppliers", "Suppliers", Truck],
-  ["crm", "CRM & feedback", Users],
+  ["crm", "CRM", Users],
+  ["business", "Business", BarChart3],
   ["reports", "Waste & reports", BarChart3],
   ["assistant", "AI assistant", Sparkles],
   ["settings", "Settings", Settings],
+] as const;
+const supplierNavigation = [
+  ["overview", "Overview"],
+  ["options", "Supplier options"],
+  ["purchasing", "Purchasing"],
+  ["requests", "Requests"],
+] as const;
+const businessNavigation = [
+  ["overview", "Overview"],
+  ["purchasing", "Purchasing"],
+  ["invoices", "Invoices"],
+  ["costs", "Costs & travel"],
+] as const;
+const businessDetailNavigation = [
+  ["customers", "Customers"],
+  ["suppliers", "Suppliers"],
+  ["ingredients", "Ingredients"],
+  ["locations", "Locations"],
+  ["industries", "Industries"],
+  ["events", "Events"],
+] as const;
+const crmNavigation = [
+  ["", "Clients"],
+  ["pipeline", "Pipeline"],
+  ["follow-ups", "Follow-ups"],
+  ["feedback", "Feedback"],
 ] as const;
 export function Panel({
   title,
@@ -295,14 +328,24 @@ export default function Admin({
     [revision, setRevision] = useState(0),
     [mode, setMode] = useState("live"),
     [loaded, setLoaded] = useState(false),
+    [lastUpdated, setLastUpdated] = useState(""),
     [error, setError] = useState(""),
     [enquiries, setEnquiries] = useState<any[]>([]),
     [integrations, setIntegrations] = useState<Record<string, boolean>>({}),
     [busy, setBusy] = useState(false),
     [edit, setEdit] = useState<Edit | null>(null);
+  const fetchGeneration = useRef(0);
   const page = section[0] || "";
+  const { params: navigationParams } = useReportFilters();
+  const selectedTab = navigationParams.get("tab") || "overview";
+  const selectedBusinessDetail = navigationParams.get("detail") || "customers";
   const href = (p: string) => `/admin${p ? "/" + p : ""}?mode=${mode}`;
+  const nestedHref = (p: string, values: Record<string, string>) => {
+    const query = new URLSearchParams({ mode, ...values });
+    return `/admin/${p}?${query.toString()}`;
+  };
   async function reload(selected = mode) {
+    const generation = ++fetchGeneration.current;
     setError("");
     try {
       const r = await fetch(`/api/admin/state?mode=${selected}`, {
@@ -310,6 +353,8 @@ export default function Admin({
       });
       const j: any = await r.json();
       if (!r.ok) throw Error(j.error);
+      if (generation !== fetchGeneration.current) return;
+      setLastUpdated(new Date().toISOString());
       setS(j.state);
       setRevision(j.revision);
       setEnquiries(j.enquiries);
@@ -327,8 +372,21 @@ export default function Admin({
     setMode(m);
     void reload(m);
   }, []);
+  useEffect(() => {
+    if (!loaded || busy || edit) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void reload(mode);
+    };
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [loaded, busy, edit, mode]);
   async function run(type: string, payload: any) {
     if (busy) throw Error("A save is already in progress");
+    ++fetchGeneration.current;
     setBusy(true);
     try {
       const r = await fetch("/api/admin/action", {
@@ -342,6 +400,8 @@ export default function Admin({
       });
       const j: any = await r.json();
       if (!r.ok) throw Error(j.error);
+      ++fetchGeneration.current;
+      setLastUpdated(new Date().toISOString());
       setS(j.state);
       setRevision(j.revision);
     } finally {
@@ -350,6 +410,7 @@ export default function Admin({
   }
   async function api(path: string, payload: any) {
     if (busy) throw Error("Another request is in progress");
+    ++fetchGeneration.current;
     setBusy(true);
     try {
       const r = await fetch("/api/admin/" + path, {
@@ -360,6 +421,8 @@ export default function Admin({
       const j: any = await r.json();
       if (!r.ok) throw Error(j.error);
       if (j.state) {
+        ++fetchGeneration.current;
+        setLastUpdated(new Date().toISOString());
         setS(j.state);
         setRevision(j.revision);
       }
@@ -403,7 +466,13 @@ export default function Admin({
     } catch {}
     return () => controller.abort();
   }, [loaded, s, mode]);
-  const title = navigation.find((n) => n[0] === page)?.[1] || "Order details";
+  const crmClient =
+    page === "crm" && section[1] === "client"
+      ? s.customers.find((customer) => customer.id === section[2])
+      : undefined;
+  const title = crmClient
+    ? `CRM / ${crmClient.company || crmClient.name}`
+    : navigation.find((n) => n[0] === page)?.[1] || "Order details";
   return (
     <Context.Provider
       value={{
@@ -436,6 +505,82 @@ export default function Admin({
                         <span>{label}</span>
                       </a>
                     </SidebarMenuButton>
+                    {path === "suppliers" && page === path && (
+                      <SidebarMenuSub aria-label="Supplier sections">
+                        {supplierNavigation.map(([tab, subLabel]) => (
+                          <SidebarMenuSubItem key={tab}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={page === path && selectedTab === tab}
+                            >
+                              <a href={nestedHref(path, { tab })}>{subLabel}</a>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
+                    {path === "business" && page === path && (
+                      <SidebarMenuSub aria-label="Business sections">
+                        {businessNavigation.map(([tab, subLabel]) => (
+                          <SidebarMenuSubItem key={tab}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={page === path && selectedTab === tab}
+                            >
+                              <a href={nestedHref(path, { tab })}>{subLabel}</a>
+                            </SidebarMenuSubButton>
+                            {tab === "overview" && selectedTab === "overview" && (
+                              <SidebarMenuSub aria-label="Business overview reports">
+                                {businessDetailNavigation.map(
+                                  ([detail, detailLabel]) => (
+                                    <SidebarMenuSubItem key={detail}>
+                                      <SidebarMenuSubButton
+                                        asChild
+                                        size="sm"
+                                        isActive={
+                                          page === path &&
+                                          selectedTab === tab &&
+                                          selectedBusinessDetail === detail
+                                        }
+                                      >
+                                        <a
+                                          href={nestedHref(path, {
+                                            tab,
+                                            detail,
+                                          })}
+                                        >
+                                          {detailLabel}
+                                        </a>
+                                      </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                  ),
+                                )}
+                              </SidebarMenuSub>
+                            )}
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
+                    {path === "crm" && page === path && (
+                      <SidebarMenuSub aria-label="CRM sections">
+                        {crmNavigation.map(([subpath, subLabel]) => (
+                          <SidebarMenuSubItem key={subpath || "clients"}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={
+                                subpath
+                                  ? section[1] === subpath
+                                  : !section[1] || section[1] === "client"
+                              }
+                            >
+                              <a href={href(subpath ? `crm/${subpath}` : "crm")}>
+                                {subLabel}
+                              </a>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -493,7 +638,7 @@ export default function Admin({
                 Changes here never affect live records.
               </div>
             )}
-            <div className="ops-heading">
+            {!(page === "crm" && section[1] === "client") && <div className="ops-heading">
               <div>
                 <span className="eyebrow">
                   {new Intl.DateTimeFormat("en-GB", {
@@ -504,17 +649,19 @@ export default function Admin({
                   }).format(new Date())}
                 </span>
                 <h1>
-                  {section[1]
+                  {section[1] && page === "orders"
                     ? "Order details"
                     : page
                       ? ""
                       : "A good day starts here."}
-                  {!section[1] && page ? title : ""}
+                  {(!section[1] || page !== "orders") && page ? title : ""}
                 </h1>
                 <p>
                   {page === ""
                     ? "Your kitchen, your customers, your next occasion."
-                    : "Keep the details together. Give the food your attention."}
+                    : page === "crm"
+                      ? "Manage your clients, enquiries and follow-ups. Build lasting relationships through great food."
+                      : "Keep the details together. Give the food your attention."}
                 </p>
               </div>
               {page === "" && (
@@ -522,7 +669,16 @@ export default function Admin({
                   View orders <ArrowRight size={16} />
                 </a>
               )}
-            </div>
+            </div>}
+            {loaded && !(page === "crm" && section[1] === "client") && (
+              <p className="refresh-status" role="status">
+                {error ? "Showing last successful data · " : "Updated "}
+                {lastUpdated
+                  ? new Date(lastUpdated).toLocaleTimeString("en-GB")
+                  : "—"}{" "}
+                · refreshes every 30 seconds while visible
+              </p>
+            )}
             {error && (
               <p role="alert" className="error-message">
                 {error}
@@ -548,10 +704,12 @@ export default function Admin({
               <Inventory expiry={page === "expiry"} />
             ) : page === "suppliers" ? (
               <Suppliers />
+            ) : page === "business" ? (
+              <BusinessHub />
             ) : page === "crm" ? (
-              <CRM />
+              <CRM path={section.slice(1)} />
             ) : page === "reports" ? (
-              <Reports />
+              <WasteReports />
             ) : page === "assistant" ? (
               <Assistant />
             ) : page === "settings" ? (
@@ -566,7 +724,7 @@ export default function Admin({
     </Context.Provider>
   );
 }
-function Metric({
+export function Metric({
   label,
   value,
   detail,
@@ -669,7 +827,7 @@ function Overview() {
               .map((f) => [
                 f.date,
                 f.description,
-                <Tag>{f.type}</Tag>,
+                <Tag key="cell-2">{f.type}</Tag>,
                 money(f.amount),
               ])}
           />
@@ -733,18 +891,19 @@ export function OrderTable({ orders }: { orders: Order[] }) {
   const { href } = useOps();
   return (
     <GridTable
-      heads={["Order / customer", "Occasion", "Guests", "Stage"]}
+      heads={["Order / customer", "Occasion", "Guests", "Stage", "Venue"]}
       rows={orders.map((o) => [
-        <a href={href("orders/" + o.id)} className="record-link">
+        <a key="cell-0" href={href("orders/" + o.id)} className="record-link">
           <b>{o.details.company || o.details.name}</b>
           <small>{o.reference}</small>
         </a>,
-        <span>
+        <span key="cell-1">
           {o.details.date || "Date to confirm"}
           <small className="subtext">{o.details.eventType}</small>
         </span>,
         o.details.attendees,
         <Tag
+          key="cell-3"
           tone={
             o.status === "delivered"
               ? "green"
@@ -755,6 +914,16 @@ export function OrderTable({ orders }: { orders: Order[] }) {
         >
           {o.status}
         </Tag>,
+        <a key="venue" href={href("orders/" + o.id)}>
+          {o.details.venue || "Venue to confirm"}
+          <small className="subtext">
+            {o.venueResearch
+              ? "Parking & access researched"
+              : o.details.place
+                ? "Venue selected · research pending"
+                : "Enter venue details"}
+          </small>
+        </a>,
       ])}
       empty="Your next occasion will appear here."
     />
@@ -766,6 +935,7 @@ function Orders() {
     [query, setQuery] = useState("");
   return (
     <>
+      <UpcomingVenueResearch />
       <Panel
         title="New enquiries"
         action={<a href="/enquire">Open enquiry form ↗</a>}
@@ -776,7 +946,7 @@ function Orders() {
             const existing = s.orders.find((o) => o.enquiryId === e.id);
             return [
               new Date(e.createdAt).toLocaleDateString("en-GB"),
-              <span>
+              <span key="cell-1">
                 {e.details.company || e.details.name}
                 <small className="subtext">{e.details.email}</small>
               </span>,
@@ -853,24 +1023,11 @@ function Recipes() {
           </Add>
         }
       >
-        <GridTable
-          heads={["Dish", "Variant", "Ingredients", "Cost per portion", ""]}
-          rows={s.recipes.map((r) => [
-            r.name,
-            r.variant,
-            r.lines.length,
-            money(Math.round(recipeCost(s, r))),
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setEditing(structuredClone(r));
-                setError("");
-              }}
-            >
-              Edit recipe
-            </Button>,
-          ])}
+        <RecipeLibrary
+          onEdit={(r) => {
+            setEditing(r);
+            setError("");
+          }}
         />
         <p className="panel-note">
           Costs include usable-yield allowances. Create a distinct variant for
@@ -899,6 +1056,7 @@ function Recipes() {
             `${i.yield * 100}%`,
             i.allergens || "Not recorded",
             <Button
+              key="cell-5"
               variant="ghost"
               size="sm"
               onClick={() => open({ ...ingredientEditor(s), values: i })}
@@ -946,6 +1104,7 @@ function Recipes() {
                   value={editing.variant}
                   onChange={(variant) => setEditing({ ...editing, variant })}
                 />
+                <RecipeMetadata recipe={editing} onChange={setEditing} />
                 {editing.lines.map((line: any, i: number) => (
                   <div className="attendee-row wide" key={i}>
                     <Pick
@@ -1032,6 +1191,14 @@ function ingredientEditor(s: State): Edit {
       { key: "name", label: "Ingredient", required: true },
       { key: "unit", label: "Base unit", options: ["g", "ml", "each"] },
       {
+        key: "category",
+        label: "Ingredient symbol",
+        options: [
+          { value: "", label: "No symbol" },
+          ...categories.map((c) => ({ value: c, label: c })),
+        ],
+      },
+      {
         key: "packQuantity",
         label: "Quantity in pack (base units)",
         type: "number",
@@ -1062,6 +1229,7 @@ function ingredientEditor(s: State): Edit {
       },
     ],
     values: { unit: "g", yield: 1 },
+    transform: (v) => ({ ...v, category: v.category || undefined }),
   };
 }
 export function stockEditor(
@@ -1117,7 +1285,7 @@ export function stockEditor(
       ...(purchase
         ? {
             ingredientId: purchase.ingredientId,
-            quantity: purchase.quantity,
+            quantity: purchase.quantity - (purchase.receivedQuantity || 0),
             purchaseId: purchase.id,
           }
         : {}),
@@ -1128,6 +1296,7 @@ function Inventory({ expiry }: { expiry: boolean }) {
   const { s, open } = useOps();
   return (
     <>
+      <StockSummary />
       <div className="metric-grid">
         <Metric
           label="Stock batches"
@@ -1185,7 +1354,7 @@ function Inventory({ expiry }: { expiry: boolean }) {
                 ]
           }
           rows={s.batches.map((b) => [
-            <span>
+            <span key="cell-0">
               <b>{s.ingredients.find((i) => i.id === b.ingredientId)?.name}</b>
               <small className="subtext">
                 {b.id.slice(0, 8)} · received {b.intake}
@@ -1194,9 +1363,11 @@ function Inventory({ expiry }: { expiry: boolean }) {
             ...(expiry
               ? [
                   b.location,
-                  <Tag tone={!b.expiry || b.expiry < today() ? "amber" : ""}>
-                    {b.expiry || "Date required"} · {b.dateType}
-                  </Tag>,
+                  <ExpiryBadge
+                    key="cell-1"
+                    expiry={b.expiry}
+                    dateType={b.dateType}
+                  />,
                   `${b.opened || "—"} / ${b.frozen || "—"} / ${b.thawed || "—"}`,
                   b.notes,
                 ]
@@ -1204,11 +1375,14 @@ function Inventory({ expiry }: { expiry: boolean }) {
                   `${Math.round(b.quantity * 100) / 100} ${s.ingredients.find((i) => i.id === b.ingredientId)?.unit}`,
                   `${Math.round(available(s, b.id) * 100) / 100}`,
                   b.location,
-                  <Tag tone={!b.expiry || b.expiry < today() ? "amber" : ""}>
-                    {b.expiry || "Date required"}
-                  </Tag>,
+                  <ExpiryBadge
+                    key="cell-3"
+                    expiry={b.expiry}
+                    dateType={b.dateType}
+                  />,
                 ]),
             <Button
+              key="cell-2"
               variant="outline"
               size="sm"
               onClick={() =>
@@ -1276,60 +1450,40 @@ function Inventory({ expiry }: { expiry: boolean }) {
   );
 }
 function Suppliers() {
-  const { s, open } = useOps();
+  const { s, open, href } = useOps();
+  const { params } = useReportFilters();
+  const requestedTab = params.get("tab") || "overview";
+  const tab = supplierNavigation.some(([value]) => value === requestedTab)
+    ? requestedTab
+    : "overview";
+  const addSupplier = () =>
+    open({
+      title: "Add supplier",
+      action: "supplier",
+      fields: supplierFields,
+    });
+  const editSupplier = (supplier: State["suppliers"][number]) =>
+    open({
+      title: "Edit supplier",
+      action: "supplier",
+      fields: supplierFields,
+      values: supplier,
+    });
   return (
     <>
-      <Panel
-        title="Your suppliers"
-        action={
-          <Add
-            onClick={() =>
-              open({
-                title: "Add supplier",
-                action: "supplier",
-                fields: supplierFields,
-              })
-            }
-          >
-            Add supplier
-          </Add>
-        }
-      >
-        <GridTable
-          heads={[
-            "Supplier",
-            "Delivery",
-            "Minimum order",
-            "Lead time",
-            "Contact",
-            "",
-          ]}
-          rows={s.suppliers.map((x) => [
-            x.name,
-            money(x.deliveryCharge),
-            money(x.minimumOrder),
-            `${x.leadDays} days`,
-            <span>
-              {x.email}
-              <small className="subtext">{x.phone}</small>
-            </span>,
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                open({
-                  title: "Edit supplier",
-                  action: "supplier",
-                  fields: supplierFields,
-                  values: x,
-                })
-              }
-            >
-              Edit
-            </Button>,
-          ])}
+      {tab === "overview" && (
+        <SupplierInsights
+          onAddSupplier={addSupplier}
+          onEditSupplier={editSupplier}
         />
-      </Panel>
+      )}
+      {tab === "options" && (
+        <SupplierInsights
+          section="options"
+          onEditSupplier={editSupplier}
+        />
+      )}
+      {tab === "purchasing" && (
       <Panel
         title="Purchase orders"
         action={
@@ -1386,10 +1540,10 @@ function Suppliers() {
           ]}
           rows={s.purchases.map((p) => [
             `${s.suppliers.find((x) => x.id === p.supplierId)?.name} · ${s.ingredients.find((x) => x.id === p.ingredientId)?.name}`,
-            p.quantity,
+            `${p.quantity} ordered · ${p.receivedQuantity || 0} received`,
             money(p.cost),
             p.eta,
-            <Tag>{p.status}</Tag>,
+            <Tag key="cell-4">{p.status}</Tag>,
             p.status === "ordered" ? (
               <Button size="sm" onClick={() => open(stockEditor(s, p))}>
                 Receive
@@ -1400,6 +1554,9 @@ function Suppliers() {
           ])}
         />
       </Panel>
+      )}
+      {tab === "requests" && (
+        <>
       <Panel
         title="Supplier communication"
         action={
@@ -1446,43 +1603,13 @@ function Suppliers() {
           automatically contact suppliers.
         </div>
       </Panel>
-      <Panel title="Restock email drafts">
-        <div className="card-list">
-          {s.suppliers.map((sup) => (
-            <div key={sup.id}>
-              <h3>{sup.name}</h3>
-              <p>{sup.notes}</p>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  open({
-                    title: "Review restock email",
-                    action: "draft",
-                    fields: draftFields,
-                    values: {
-                      to: sup.email,
-                      subject:
-                        "EM² Meals — stock availability and delivery request",
-                      supplierId: sup.id,
-                      body: `Hello ${sup.name},\n\nPlease confirm availability, pricing and your next delivery slot for:\n${s.ingredients
-                        .filter((i) => i.supplierId === sup.id)
-                        .map(
-                          (i) => `• ${i.name}: quantity to confirm (${i.unit})`,
-                        )
-                        .join(
-                          "\n",
-                        )}\n\nPlease include delivery charges and any minimum order requirements. This is an availability enquiry, not a confirmed purchase.\n\nThank you,\nEM² Meals`,
-                    },
-                  })
-                }
-              >
-                Prepare restock email
-              </Button>
-            </div>
-          ))}
-        </div>
-        <Drafts />
+      <Panel title="Supplier requests">
+        <a href={`${href("business")}&tab=purchasing`}>
+          Open combined purchasing and supplier email drafts →
+        </a>
       </Panel>
+        </>
+      )}
     </>
   );
 }
@@ -1490,6 +1617,15 @@ const supplierFields: Spec[] = [
   { key: "name", label: "Supplier name", required: true },
   { key: "email", label: "Email", type: "email", required: true },
   { key: "phone", label: "Phone" },
+  { key: "contactName", label: "Point of contact" },
+  { key: "contactRole", label: "Contact role" },
+  { key: "website", label: "Business website (HTTPS)" },
+  { key: "address", label: "Business address" },
+  {
+    key: "logoUrl",
+    label: "Logo URL override (website favicon is used automatically)",
+  },
+  { key: "businessDetails", label: "Business details", type: "textarea" },
   { key: "deliveryCharge", label: "Delivery charge (£)", type: "money" },
   { key: "minimumOrder", label: "Minimum order (£)", type: "money" },
   { key: "leadDays", label: "Delivery lead time (days)", type: "number" },
@@ -1500,406 +1636,15 @@ export const draftFields: Spec[] = [
   { key: "subject", label: "Subject", required: true },
   { key: "body", label: "Email content", type: "textarea", required: true },
 ];
-function CRM() {
-  const { s, open } = useOps();
-  return (
-    <>
-      <Panel
-        title="Customers & relationships"
-        action={
-          <Add
-            onClick={() =>
-              open({
-                title: "Add customer",
-                action: "customer",
-                fields: customerFields,
-              })
-            }
-          >
-            Add customer
-          </Add>
-        }
-      >
-        <GridTable
-          heads={[
-            "Name / company",
-            "Email",
-            "Orders",
-            "Preferences / notes",
-            "",
-          ]}
-          rows={s.customers.map((c) => [
-            <span>
-              <b>{c.company || c.name}</b>
-              <small className="subtext">{c.name}</small>
-            </span>,
-            c.email,
-            s.orders.filter((o) => o.customerId === c.id).length,
-            c.notes,
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                open({
-                  title: "Update customer",
-                  action: "customer",
-                  fields: customerFields,
-                  values: c,
-                })
-              }
-            >
-              Edit
-            </Button>,
-          ])}
-        />
-      </Panel>
-      <Panel
-        title="Feedback & follow-up"
-        action={
-          <Add
-            onClick={() =>
-              open({
-                title: "Record customer feedback",
-                action: "feedback",
-                fields: [
-                  {
-                    key: "customerId",
-                    label: "Customer",
-                    options: s.customers.map((c) => ({
-                      value: c.id,
-                      label: c.company || c.name,
-                    })),
-                  },
-                  {
-                    key: "orderId",
-                    label: "Order",
-                    options: s.orders.map((o) => ({
-                      value: o.id,
-                      label: o.reference,
-                    })),
-                  },
-                  { key: "rating", label: "Rating (1–5)", type: "number" },
-                  { key: "date", label: "Date", type: "date" },
-                  {
-                    key: "comment",
-                    label: "Feedback / issues / follow-up",
-                    type: "textarea",
-                  },
-                ],
-                values: { rating: 5 },
-              })
-            }
-          >
-            Record feedback
-          </Add>
-        }
-      >
-        <GridTable
-          heads={["Customer", "Rating", "Date", "Feedback"]}
-          rows={s.feedback.map((f) => [
-            s.customers.find((c) => c.id === f.customerId)?.company ||
-              s.customers.find((c) => c.id === f.customerId)?.name,
-            `${f.rating} / 5`,
-            f.date,
-            f.comment,
-          ])}
-        />
-      </Panel>
-    </>
-  );
-}
-const customerFields: Spec[] = [
-  { key: "name", label: "Contact name", required: true },
-  { key: "company", label: "Company" },
-  { key: "email", label: "Email", type: "email", required: true },
-  { key: "phone", label: "Phone" },
-  { key: "notes", label: "Preferences / relationship notes", type: "textarea" },
-];
-function downloadCSV(name: string, rows: any[][]) {
-  const csv = rows
-    .map((row) =>
-      row
-        .map(
-          (v) =>
-            '"' +
-            String(v ?? "")
-              .replace(/^[=+@-]/, "'$&")
-              .replaceAll('"', '""') +
-            '"',
-        )
-        .join(","),
-    )
-    .join("\r\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(
-    new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" }),
-  );
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-function Reports() {
-  const { s, open } = useOps();
-  const [customer, setCustomer] = useState(s.customers[0]?.id || ""),
-    [from, setFrom] = useState(today().slice(0, 7) + "-01"),
-    [to, setTo] = useState(today());
-  const report =
-    customer && s.customers.some((c) => c.id === customer) && from <= to
-      ? recap(s, customer, from, to)
-      : null;
-  return (
-    <>
-      <div className="metric-grid">
-        <Metric
-          label="Measured waste"
-          value={`${(s.waste.reduce((v, w) => v + w.weightGrams, 0) / 1000).toFixed(2)} kg`}
-          detail="Only recorded weights"
-        />
-        <Metric
-          label="Waste cost allocation"
-          value={money(s.waste.reduce((v, w) => v + w.cost, 0))}
-          detail="Already included in stock / meal costs"
-        />
-        <Metric
-          label="Waste records"
-          value={s.waste.length}
-          detail="Measured events, all categories"
-        />
-        <Metric
-          label="Delivered occasions"
-          value={s.orders.filter((o) => o.status === "delivered").length}
-          detail="Ready for customer reporting"
-        />
-      </div>
-      <Panel
-        title="Waste register"
-        action={
-          <Add
-            onClick={() =>
-              open({
-                title: "Record measured waste",
-                action: "waste",
-                fields: [
-                  {
-                    key: "category",
-                    label: "Waste category",
-                    options: [
-                      "preparation trimmings",
-                      "spoilage",
-                      "unserved portions",
-                      "plate waste",
-                    ],
-                  },
-                  {
-                    key: "orderId",
-                    label: "Order (required except spoilage)",
-                    options: s.orders.map((o) => ({
-                      value: o.id,
-                      label: o.reference,
-                    })),
-                  },
-                  {
-                    key: "ingredientId",
-                    label: "Ingredient (trimmings / spoilage)",
-                    options: s.ingredients.map((i) => ({
-                      value: i.id,
-                      label: i.name,
-                    })),
-                  },
-                  {
-                    key: "recipeId",
-                    label: "Meal (unserved / plate waste)",
-                    options: s.recipes.map((r) => ({
-                      value: r.id,
-                      label: `${r.name} · ${r.variant}`,
-                    })),
-                  },
-                  {
-                    key: "batchId",
-                    label: "Stock batch (spoilage only)",
-                    options: s.batches.map((b) => ({
-                      value: b.id,
-                      label: `${s.ingredients.find((i) => i.id === b.ingredientId)?.name} · ${b.id.slice(0, 8)}`,
-                    })),
-                  },
-                  { key: "quantity", label: "Quantity wasted", type: "number" },
-                  {
-                    key: "unit",
-                    label: "Quantity unit",
-                    options: ["g", "ml", "each", "portions"],
-                  },
-                  {
-                    key: "weightGrams",
-                    label: "Measured total weight (grams; 0 if unmeasured)",
-                    type: "number",
-                  },
-                  { key: "date", label: "Date", type: "date" },
-                  { key: "reason", label: "Observed reason", type: "textarea" },
-                ],
-                values: { category: "unserved portions", unit: "portions" },
-              })
-            }
-          >
-            Log waste
-          </Add>
-        }
-      >
-        <GridTable
-          heads={[
-            "Date",
-            "Category",
-            "Quantity",
-            "Measured weight",
-            "Cost allocation",
-            "Reason",
-          ]}
-          rows={s.waste.map((w) => [
-            w.date,
-            w.category,
-            `${w.quantity} ${w.unit}`,
-            w.weightGrams ? `${w.weightGrams} g` : "Not measured",
-            money(w.cost),
-            w.reason,
-          ])}
-        />
-        <p className="panel-note">
-          Preparation trimmings come from ingredients already consumed. Only
-          stock spoilage deducts stock here. Leftovers alone do not establish
-          whether a dish was unpopular.
-        </p>
-      </Panel>
-      <Panel title="Customer catering recap">
-        <div className="report-controls">
-          <Pick
-            label="Customer"
-            value={customer}
-            onChange={setCustomer}
-            options={s.customers.map((c) => ({
-              value: c.id,
-              label: c.company || c.name,
-            }))}
-          />
-          <Field label="From" type="date" value={from} onChange={setFrom} />
-          <Field label="To" type="date" value={to} onChange={setTo} />
-        </div>
-        {report ? (
-          <>
-            <div id="customer-recap" className="recap-card">
-              <span className="eyebrow">EM² MEALS · YOUR CATERING RECAP</span>
-              <h2>{report.customer}</h2>
-              <p>
-                {from} — {to}
-              </p>
-              <div className="report-metrics">
-                <div>
-                  <strong>{report.portions}</strong>
-                  <span>portions prepared</span>
-                </div>
-                <div>
-                  <strong>{report.wasteKg.toFixed(2)} kg</strong>
-                  <span>measured waste</span>
-                </div>
-                <div>
-                  <strong>{report.orders}</strong>
-                  <span>occasions catered</span>
-                </div>
-                <div>
-                  <strong>{report.feedback ?? "—"}</strong>
-                  <span>average feedback / 5</span>
-                </div>
-              </div>
-              <h3>Most ordered</h3>
-              {report.popular.map((p) => (
-                <div className="recap-dish" key={p.name}>
-                  <span>{p.name}</span>
-                  <b>{p.portions} portions</b>
-                </div>
-              ))}
-              <p>
-                {report.unservedPortions} unserved portions recorded. Waste
-                figures reflect {report.wasteRecords} logged events; missing
-                measurements are not treated as zero waste.
-              </p>
-              <small>
-                Popular means most ordered, not a satisfaction score. No carbon
-                savings are inferred.
-              </small>
-            </div>
-            <div className="inline-actions">
-              <Button variant="outline" onClick={() => window.print()}>
-                Print recap
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  downloadCSV("em2-catering-recap.csv", [
-                    [
-                      "Customer",
-                      "From",
-                      "To",
-                      "Occasions",
-                      "Portions",
-                      "Measured waste kg",
-                      "Unserved portions",
-                      "Feedback",
-                    ],
-                    [
-                      report.customer,
-                      from,
-                      to,
-                      report.orders,
-                      report.portions,
-                      report.wasteKg,
-                      report.unservedPortions,
-                      report.feedback,
-                    ],
-                    [],
-                    ["Most ordered", "Portions"],
-                    ...report.popular.map((x) => [x.name, x.portions]),
-                  ])
-                }
-              >
-                <Download size={15} /> Export CSV
-              </Button>
-              <Button
-                onClick={() =>
-                  open({
-                    title: "Review customer recap email",
-                    action: "draft",
-                    fields: draftFields,
-                    values: {
-                      to: s.customers.find((c) => c.id === customer)!.email,
-                      customerId: customer,
-                      subject: `Your EM² Meals catering recap · ${from} to ${to}`,
-                      body: `Hello ${s.customers.find((c) => c.id === customer)!.name},\n\nHere is your catering recap for ${from} to ${to}:\n\n${report.orders} occasions catered\n${report.portions} portions prepared\n${report.wasteKg.toFixed(2)} kg measured food waste across ${report.wasteRecords} records\n${report.unservedPortions} unserved portions recorded\n\nMost ordered:\n${report.popular.map((p) => `${p.name}: ${p.portions} portions`).join("\n")}\n\n${report.feedback === null ? "No feedback recorded in this period." : `Average feedback: ${report.feedback}/5.`}\n\nThese figures reflect recorded measurements, not a full waste audit or a carbon-saving claim. We'd love your thoughts for next time.\n\nEM² Meals`,
-                    },
-                  })
-                }
-              >
-                Prepare recap email
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="empty-state">
-            Choose a customer and a valid date range.
-          </div>
-        )}
-      </Panel>
-      <Panel title="Saved email drafts">
-        <Drafts />
-      </Panel>
-    </>
-  );
-}
 export function Drafts() {
   const { s, mode, api, busy } = useOps();
   const [view, setView] = useState<State["drafts"][number] | null>(null),
-    [status, setStatus] = useState("");
+    [status, setStatus] = useState(""),
+    [deliveryNote, setDeliveryNote] = useState("");
   return (
     <>
       <GridTable
-        heads={["To", "Subject", "Created", ""]}
+        heads={["To", "Subject", "Created", "Status", ""]}
         rows={s.drafts
           .slice()
           .reverse()
@@ -1907,7 +1652,19 @@ export function Drafts() {
             d.to,
             d.subject,
             new Date(d.at).toLocaleDateString("en-GB"),
+            d.deliveryStatus === "uncertain" || d.deliveryStatus === "sending"
+              ? "Delivery needs verification"
+              : d.deliveryStatus === "failed"
+                ? "Send failed — replace draft"
+                : d.superseded
+                  ? "Superseded"
+                  : d.sentAt
+                    ? "Sent"
+                    : draftCurrent(s, d)
+                      ? "Ready for review"
+                      : "Needs updating",
             <Button
+              key="cell-4"
               size="sm"
               variant="outline"
               onClick={() => {
@@ -1933,9 +1690,67 @@ export function Drafts() {
             </DialogDescription>
           </DialogHeader>
           <pre className="email-preview">{view?.body}</pre>
+          {view && !draftCurrent(s, view) && (
+            <p role="status">
+              Needs updating. Refresh this supplier draft in Business before
+              sending.
+            </p>
+          )}
+          {view?.deliveryStatus &&
+            ["uncertain", "sending", "failed"].includes(view.deliveryStatus) &&
+            mode === "live" && (
+              <div>
+                <p>
+                  Check this request in the email provider before recording the
+                  delivery outcome.
+                </p>
+                <Field
+                  label="Provider verification note"
+                  value={deliveryNote}
+                  onChange={setDeliveryNote}
+                />
+                <div className="inline-actions">
+                  {["sent", "not-sent"].map((outcome) => (
+                    <Button
+                      key={outcome}
+                      variant="outline"
+                      disabled={busy || deliveryNote.length < 5}
+                      onClick={async () => {
+                        try {
+                          await api("delivery", {
+                            draftId: view.id,
+                            outcome,
+                            note: deliveryNote,
+                          });
+                          setView(null);
+                        } catch (e) {
+                          setStatus((e as Error).message);
+                        }
+                      }}
+                    >
+                      {outcome === "sent"
+                        ? "Verified delivered"
+                        : "Verified not sent"}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           {status && <p role="status">{status}</p>}
           <Button
-            disabled={busy || mode === "sample" || status === "Email sent."}
+            disabled={
+              busy ||
+              mode === "sample" ||
+              status === "Email sent." ||
+              !!view?.sentAt ||
+              !!view?.superseded ||
+              !!view?.deliveryStatus ||
+              (!!view &&
+                !draftCurrent(
+                  s,
+                  s.drafts.find((d) => d.id === view.id) || view,
+                ))
+            }
             onClick={async () => {
               try {
                 await api("send", { draftId: view!.id, confirm: true });
@@ -1970,6 +1785,32 @@ function SettingsPage() {
                 values: s.settings,
                 fields: [
                   { key: "kitchen", label: "Kitchen address / postcode" },
+                  {
+                    key: "priceMode",
+                    label: "Default price entry",
+                    options: [
+                      { value: "exclusive", label: "Add VAT to price" },
+                      { value: "inclusive", label: "Price includes VAT" },
+                    ],
+                  },
+                  { key: "businessName", label: "Business legal name" },
+                  { key: "businessAddress", label: "Business address" },
+                  { key: "vatNumber", label: "VAT registration number" },
+                  {
+                    key: "paymentInstructions",
+                    label: "Invoice payment instructions",
+                    type: "textarea",
+                  },
+                  {
+                    key: "warningDays",
+                    label: "Expiry warning (days)",
+                    type: "number",
+                  },
+                  {
+                    key: "urgentDays",
+                    label: "Urgent use-by warning (days)",
+                    type: "number",
+                  },
                   {
                     key: "vatRate",
                     label: "Configured VAT rate (%)",
@@ -2058,7 +1899,7 @@ function SettingsPage() {
             [
               "email",
               "Business email",
-              "Resend delivery after review and an explicit send.",
+              "SMTP2GO delivery after review and an explicit send.",
             ],
             [
               "owner",

@@ -8,3 +8,5 @@ The following Pexels source pages identify these photographs as free to use. Lic
 - `public/images/breakfast.jpg` — Novkov Visuals, https://www.pexels.com/photo/luxurious-breakfast-buffet-with-fresh-croissants-and-bread-34307858/
 
 Photos illustrate service style. Pictured people are not identified as EM² Meals employees or endorsers. Award credentials must be supplied and verified before award claims are published.
+
+Season collection artwork (`spring.svg`, `summer.svg`, `autumn.svg`, `winter.svg`) is original SVG artwork created for EM² Meals.

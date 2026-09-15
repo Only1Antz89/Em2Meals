@@ -6,60 +6,102 @@ import {
   config,
   database,
   loadState,
+  commitState,
 } from "@/lib/server";
+import { draftCurrent } from "@/lib/operations";
+import { EmailDeliveryUncertain, sendEmail } from "@/lib/email";
 import { z } from "zod";
 export async function POST(req: Request) {
+  let locked: string | undefined;
   try {
     if (!(await owner()))
       return errorResponse(Error("Owner access required"), 403);
     sameOrigin(req);
-    const { draftId, confirm } = z
-      .object({ draftId: z.string(), confirm: z.literal(true) })
+    const { draftId, mode } = z
+      .object({
+        draftId: z.string(),
+        confirm: z.literal(true),
+        mode: z.enum(["live", "sample"]).default("live"),
+      })
       .parse(await jsonBody(req));
-    if (!confirm) throw Error("Review required");
     const c = config();
-    if (!c.RESEND_API_KEY || !c.EMAIL_FROM)
+    if (!c.SMTP2GO_API_KEY || !c.EMAIL_FROM)
       throw Error("Email setup required. The draft remains saved.");
-    const { state } = await loadState("live");
+    if (mode !== "live") throw Error("Sending disabled in sample workspace");
+    const { state, revision } = await loadState("live"),
+      db = database();
     const draft = state.drafts.find((d) => d.id === draftId);
     if (!draft) throw Error("Live draft not found");
-    const db = database();
+    const delivery = await db
+      .prepare("SELECT status,provider_id FROM email_deliveries WHERE id=?")
+      .bind(draftId)
+      .first<{ status: string; provider_id: string }>();
+    if (delivery?.status === "sent")
+      return Response.json({ status: "sent", id: delivery.provider_id });
+    if (delivery)
+      throw Error(
+        "This email has a pending, failed or uncertain send. Check delivery before preparing a replacement.",
+      );
+    if (
+      draft.superseded ||
+      draft.purchaseConfirmed ||
+      !draftCurrent(state, draft)
+    )
+      throw Error(
+        "This request needs updating. Review the current purchasing proposal before sending.",
+      );
     const at = new Date().toISOString();
+    // Claim a short workspace lease only if the reviewed revision is still current.
     const claim = await db
+      .prepare(
+        "INSERT INTO workspace_send_locks(workspace_id,draft_id,expires_at) SELECT 'live',?,? WHERE EXISTS (SELECT 1 FROM workspaces WHERE id='live' AND revision=?) ON CONFLICT(workspace_id) DO UPDATE SET draft_id=excluded.draft_id,expires_at=excluded.expires_at WHERE workspace_send_locks.expires_at<?",
+      )
+      .bind(draftId, new Date(Date.now() + 120000).toISOString(), revision, at)
+      .run();
+    if (claim.meta.changes !== 1)
+      throw Error(
+        "Workspace changed or another email is sending. Reload and review again.",
+      );
+    locked = draftId;
+    const sendClaim = await db
       .prepare(
         "INSERT OR IGNORE INTO email_deliveries(id,status,updated_at) VALUES(?,'sending',?)",
       )
       .bind(draftId, at)
       .run();
-    if (claim.meta.changes !== 1) {
-      const existing = await db
-        .prepare("SELECT status,provider_id FROM email_deliveries WHERE id=?")
-        .bind(draftId)
-        .first<any>();
-      if (existing?.status === "sent")
-        return Response.json({ status: "sent", id: existing.provider_id });
-      throw Error(
-        "This email has a pending or uncertain send. Check delivery before creating another draft.",
-      );
-    }
-    let r: Response;
+    if (sendClaim.meta.changes !== 1)
+      throw Error("Email already claimed; reload its delivery status");
     try {
-      r = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${c.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-          "Idempotency-Key": `em2-${draftId}`,
-        },
-        body: JSON.stringify({
-          from: c.EMAIL_FROM,
-          to: [draft.to],
-          subject: draft.subject,
-          text: draft.body,
-        }),
-        signal: AbortSignal.timeout(20000),
+      const result = await sendEmail({
+        apiKey: c.SMTP2GO_API_KEY,
+        sender: c.EMAIL_FROM,
+        to: [draft.to],
+        subject: draft.subject,
+        text: draft.body,
       });
-    } catch {
+      await db
+        .prepare(
+          "UPDATE email_deliveries SET status='sent',provider_id=?,updated_at=? WHERE id=?",
+        )
+        .bind(result.id, at, draftId)
+        .run();
+      draft.sentAt = at;
+      return Response.json({
+        status: "sent",
+        id: result.id,
+        state,
+        revision: await commitState("live", state, revision, draftId),
+      });
+    } catch (error) {
+      if (!(error instanceof EmailDeliveryUncertain)) {
+        await db
+          .prepare(
+            "UPDATE email_deliveries SET status='failed',error=?,updated_at=? WHERE id=?",
+          )
+          .bind((error as Error).message, at, draftId)
+          .run();
+        throw error;
+      }
       await db
         .prepare(
           "UPDATE email_deliveries SET status='uncertain',error=?,updated_at=? WHERE id=?",
@@ -67,29 +109,18 @@ export async function POST(req: Request) {
         .bind("Network response uncertain", at, draftId)
         .run();
       throw Error(
-        "Delivery status is uncertain. Check the email provider before retrying.",
+        "Delivery status uncertain. Check the email provider before preparing another request.",
       );
     }
-    const result: any = await r.json();
-    if (!r.ok) {
-      await db
-        .prepare(
-          "UPDATE email_deliveries SET status='failed',error=?,updated_at=? WHERE id=?",
-        )
-        .bind(`Provider response ${r.status}`, at, draftId)
-        .run();
-      throw Error(
-        `Email provider rejected the request (${r.status}). The draft is saved.`,
-      );
-    }
-    await db
-      .prepare(
-        "UPDATE email_deliveries SET status='sent',provider_id=?,updated_at=? WHERE id=?",
-      )
-      .bind(result.id, at, draftId)
-      .run();
-    return Response.json({ status: "sent", id: result.id });
   } catch (e) {
     return errorResponse(e);
+  } finally {
+    if (locked)
+      await database()
+        .prepare(
+          "DELETE FROM workspace_send_locks WHERE workspace_id='live' AND draft_id=?",
+        )
+        .bind(locked)
+        .run();
   }
 }

@@ -1,4 +1,5 @@
 "use client";
+import { OrderStock, OrderVenue } from "./operations-panels";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,12 +31,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
     [cancel, setCancel] = useState(false),
     [edit, setEdit] = useState<Order | null>(null),
     [review, setReview] = useState<any[] | null>(null),
-    [reviewConfirmed, setReviewConfirmed] = useState(false),
-    [departure, setDeparture] = useState(""),
-    [returnTrip, setReturnTrip] = useState(false),
-    [extra, setExtra] = useState("0"),
-    [placeQuery, setPlaceQuery] = useState(""),
-    [places, setPlaces] = useState<any[]>([]);
+    [reviewConfirmed, setReviewConfirmed] = useState(false);
   if (!o)
     return (
       <Panel title="Order not found">
@@ -51,6 +47,12 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
       setError((e as Error).message);
     }
   };
+  const suggestedMeals =
+    (
+      o.analysis as
+        | { meals?: { recipeId?: string; quantity?: number | null }[] }
+        | undefined
+    )?.meals || [];
   const editable = ["enquiry", "quote"].includes(o.status);
   const required = needs(s, o);
   const quote = o.quotes.at(-1);
@@ -112,12 +114,29 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                 open({
                   title: "Prepare quote",
                   action: "quote",
-                  values: { orderId: o.id, net: quote?.net || 0, notes: "" },
+                  values: {
+                    orderId: o.id,
+                    net:
+                      (quote?.priceMode === "inclusive"
+                        ? quote.total
+                        : quote?.net) || 0,
+                    priceMode:
+                      quote?.priceMode || s.settings.priceMode || "exclusive",
+                    notes: "",
+                  },
                   fields: [
                     {
                       key: "net",
-                      label: "Quote before VAT (£)",
+                      label: "Quote amount (£)",
                       type: "money",
+                    },
+                    {
+                      key: "priceMode",
+                      label: "Price entry",
+                      options: [
+                        { value: "exclusive", label: "Add VAT" },
+                        { value: "inclusive", label: "Includes VAT" },
+                      ],
                     },
                     {
                       key: "notes",
@@ -241,11 +260,12 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
             </div>
           </div>
           <GridTable
-            heads={["Version", "Net", "VAT rate", "Total"]}
+            heads={["Version", "Net", "VAT rate", "VAT amount", "Total"]}
             rows={o.quotes.map((q) => [
               q.version,
               money(q.net),
               `${q.vatRate}%`,
+              money(q.total - q.net),
               money(q.total),
             ])}
           />
@@ -265,7 +285,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                       customerId: o.customerId,
                       to: o.details.email,
                       subject: `EM² Meals quote ${o.reference} · version ${quote.version}`,
-                      body: `Hello ${o.details.name},\n\nThank you for your enquiry. Here is our quote for ${o.details.eventType} on ${o.details.date || "a date to confirm"}:\n\n${o.items.map((i) => `${s.recipes.find((r) => r.id === i.recipeId)?.name} · ${s.recipes.find((r) => r.id === i.recipeId)?.variant}: ${i.quantity} portions`).join("\n")}\n\n${quote.notes}\n\nBefore VAT: ${money(quote.net)}\nVAT rate: ${quote.vatRate}%\nTotal: ${money(quote.total)}\n\nPlease reply to confirm the details and discuss any outstanding dietary or access requirements. Your booking is subject to our confirmation.\n\nEM² Meals`,
+                      body: `Hello ${o.details.name},\n\nThank you for your enquiry. Here is our quote for ${o.details.eventType} on ${o.details.date || "a date to confirm"}:\n\n${o.items.map((i) => `${s.recipes.find((r) => r.id === i.recipeId)?.name} · ${s.recipes.find((r) => r.id === i.recipeId)?.variant}: ${i.quantity} portions`).join("\n")}\n\n${quote.notes}\n\nBefore VAT: ${money(quote.net)}\nVAT: ${money(quote.total - quote.net)} (${quote.vatRate}%)\nTotal: ${money(quote.total)}\n\nPlease reply to confirm the details and discuss any outstanding dietary or access requirements. Your booking is subject to our confirmation.\n\nEM² Meals`,
                     },
                   })
                 }
@@ -284,7 +304,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
             const snap = o.costSnapshot?.items.find((i) => i.recipeId === r.id);
             const unit = snap?.unitCost ?? Math.round(recipeCost(s, r));
             return [
-              <details>
+              <details key="cell-0">
                 <summary>
                   <b>{snap?.name || `${r.name} · ${r.variant}`}</b>
                 </summary>
@@ -381,6 +401,37 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                   <small className="subtext">Evidence: {m.evidence}</small>
                 </p>
               ))}
+              {editable &&
+                suggestedMeals.some(
+                  (m) => m.recipeId && (m.quantity || 0) > 0,
+                ) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const matches = new Map<string, number>();
+                      for (const m of suggestedMeals)
+                        if (
+                          m.recipeId &&
+                          m.quantity != null &&
+                          m.quantity > 0 &&
+                          s.recipes.some((r) => r.id === m.recipeId)
+                        )
+                          matches.set(
+                            m.recipeId,
+                            (matches.get(m.recipeId) || 0) + m.quantity,
+                          );
+                      setEdit({
+                        ...structuredClone(o),
+                        items: [...matches].map(([recipeId, quantity]) => ({
+                          recipeId,
+                          quantity,
+                        })),
+                      });
+                    }}
+                  >
+                    Review suggested recipe matches
+                  </Button>
+                )}
               <h3>Dietary observations</h3>
               {(o.analysis as any).dietary?.map((d: any, i: number) => (
                 <p key={i}>
@@ -407,152 +458,8 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
           </p>
         </Panel>
       </div>
-      <Panel title="Journey & venue">
-        <div className="journey-grid">
-          <div>
-            <div className="form-grid">
-              <Field
-                label="Departure time (your device timezone)"
-                type="datetime-local"
-                value={departure}
-                onChange={setDeparture}
-              />
-              <Field
-                label="Parking / tolls / other charges (£)"
-                type="number"
-                step="any"
-                value={extra}
-                onChange={setExtra}
-              />
-              <label className="check-label wide">
-                <Checkbox
-                  checked={returnTrip}
-                  onCheckedChange={(v) => setReturnTrip(v === true)}
-                />{" "}
-                Include a return journey estimate
-              </label>
-            </div>
-            <div className="inline-actions">
-              <Button
-                disabled={busy || !departure}
-                onClick={() =>
-                  safe(() =>
-                    api("route", {
-                      orderId: o.id,
-                      departure: new Date(departure).toISOString(),
-                      returnTrip,
-                      extraCost: Math.round(Number(extra) * 100),
-                    }),
-                  )
-                }
-              >
-                Calculate with Google Maps
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  open({
-                    title: "Manual journey estimate",
-                    action: "route",
-                    values: {
-                      orderId: o.id,
-                      departure,
-                      returnTrip,
-                      extraCost: Math.round(Number(extra) * 100),
-                      miles: o.route?.miles || 0,
-                      minutes: o.route?.minutes || 0,
-                    },
-                    fields: [
-                      {
-                        key: "miles",
-                        label:
-                          "Total journey miles (including return if selected)",
-                        type: "number",
-                      },
-                      {
-                        key: "minutes",
-                        label: "Total driving minutes",
-                        type: "number",
-                      },
-                    ],
-                  })
-                }
-              >
-                Enter manually
-              </Button>
-            </div>
-            {o.route && (
-              <div className="route-result">
-                <strong>
-                  {o.route.miles.toFixed(1)} miles ·{" "}
-                  {Math.ceil(o.route.minutes)} minutes driving
-                </strong>
-                <p>
-                  {s.settings.bufferMinutes} minutes additional loading buffer.
-                  <br />
-                  Fuel:{" "}
-                  {o.route.fuelCost === null
-                    ? "Enter MPG and petrol price in Settings"
-                    : money(o.route.fuelCost)}{" "}
-                  · Other charges: {money(o.route.extraCost)}
-                </p>
-                <small>
-                  {o.route.source} ·{" "}
-                  {new Date(o.route.at).toLocaleString("en-GB")}
-                </small>
-              </div>
-            )}
-            <p className="panel-note">
-              Return journeys use twice the outbound estimate. Actual traffic,
-              timing and vehicle consumption can differ.
-            </p>
-          </div>
-          <div>
-            {o.details.address ? (
-              <iframe
-                title="Venue map"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                src={`https://www.google.com/maps?q=${encodeURIComponent(o.details.address + " " + o.details.postcode)}&output=embed`}
-                className="venue-map"
-              />
-            ) : (
-              <div className="empty-state">
-                Add a venue address to display the map.
-              </div>
-            )}
-            <div className="inline-actions">
-              <Field
-                label="Find a venue address"
-                value={placeQuery}
-                onChange={setPlaceQuery}
-              />
-              <Button
-                variant="outline"
-                disabled={busy || placeQuery.length < 3}
-                onClick={() =>
-                  safe(async () =>
-                    setPlaces(
-                      (await api("places", { query: placeQuery })).places,
-                    ),
-                  )
-                }
-              >
-                Find
-              </Button>
-            </div>
-            {places.map((p) => (
-              <div key={p.id} className="place-result">
-                <b>{p.displayName?.text}</b>
-                <p>{p.formattedAddress}</p>
-                <a href={p.googleMapsUri} target="_blank" rel="noreferrer">
-                  View on Google Maps ↗
-                </a>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Panel>
+      <OrderStock order={o} />
+      <OrderVenue order={o} />
       <AlertDialog open={cancel} onOpenChange={setCancel}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -678,6 +585,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                   ["venue", "Venue", "text"],
                   ["address", "Address", "text"],
                   ["postcode", "Postcode", "text"],
+                  ["locality", "Locality", "text"],
                 ].map(([k, label, type]) => (
                   <Field
                     key={k}

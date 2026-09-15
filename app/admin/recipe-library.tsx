@@ -227,10 +227,44 @@ export function RecipeMetadata({
   onChange: (r: Recipe) => void;
 }) {
   const [year, setYear] = useState(today().slice(0, 4));
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  async function uploadImage(file?: File) {
+    if (!file) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const body = new FormData();
+      body.set("file", file);
+      const response = await fetch("/api/admin/uploads", {
+        method: "POST",
+        body,
+      });
+      const result = (await response.json()) as { url?: string; error?: string };
+      if (!response.ok) throw Error(result.error || "Upload failed");
+      if (!result.url) throw Error("Upload did not return an image URL");
+      onChange({ ...recipe, imageUrl: result.url });
+    } catch (error) {
+      setUploadError((error as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
   return (
     <div className="wide">
+      <label>
+        Dish image (JPG, PNG or WebP; max 4 MB)
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          disabled={uploading}
+          onChange={(event) => void uploadImage(event.target.files?.[0])}
+        />
+      </label>
+      {uploading && <p>Uploading image…</p>}
+      {uploadError && <p role="alert">{uploadError}</p>}
       <Field
-        label="Finished-dish image URL (HTTPS)"
+        label="Finished-dish image URL (or paste an HTTPS URL)"
         value={recipe.imageUrl || ""}
         onChange={(imageUrl) => onChange({ ...recipe, imageUrl })}
       />

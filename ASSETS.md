@@ -10,3 +10,11 @@ The following Pexels source pages identify these photographs as free to use. Lic
 Photos illustrate service style. Pictured people are not identified as EM² Meals employees or endorsers. Award credentials must be supplied and verified before award claims are published.
 
 Season collection artwork (`spring.svg`, `summer.svg`, `autumn.svg`, `winter.svg`) is original SVG artwork created for EM² Meals.
+
+## Original commissioned imagery
+
+The following original images were generated for EM² Meals with OpenAI ImageGen. They depict representative service moments and do not identify real employees, clients or venues.
+
+- `public/images/em2-hero-chef.png` — Black woman chef finishing a plated meal in a professional kitchen.
+- `public/images/em2-private-chef.png` — Black private chef serving hosts in a London home setting.
+- `public/images/em2-corporate-team.png` — Black catering staff preparing a working lunch in a London office.

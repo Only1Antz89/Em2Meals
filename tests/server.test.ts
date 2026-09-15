@@ -6,7 +6,7 @@ import { loadState, commitState, importEnquiries } from "../lib/server";
 import { POST as send } from "../app/api/admin/send/route";
 import { POST as submit } from "../app/api/enquiries/route";
 import { POST as resolve } from "../app/api/admin/delivery/route";
-import { runDigest } from "../app/api/cron/crm-followups/route";
+import { runDigest } from "../lib/crm-digest";
 function req(body: unknown) {
   return new Request("http://localhost/api/test", {
     method: "POST",

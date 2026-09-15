@@ -80,9 +80,9 @@ export default function EnquiryForm() {
         <Check size={42} />
         <span className="eyebrow">ENQUIRY RECEIVED</span>
         <h2>
-          Something delicious
+          Thank you. Your table
           <br />
-          is on the horizon.
+          starts here.
         </h2>
         <p>
           Your reference is <strong>{reference}</strong>. We’ll review your
@@ -127,7 +127,7 @@ export default function EnquiryForm() {
               value={data.service}
               onChange={(v) => update("service", v)}
               options={[
-                { value: "private", label: "Private chef & events" },
+                { value: "private", label: "Private dining" },
                 { value: "corporate", label: "Corporate catering" },
               ]}
             />

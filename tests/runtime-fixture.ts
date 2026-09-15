@@ -51,6 +51,8 @@ export const env: Record<string, unknown> = {
     },
   },
 };
+globalThis.__EM2_TEST_ENV__ = env;
+globalThis.__EM2_TEST_DB__ = env.DB as typeof globalThis.__EM2_TEST_DB__;
 export async function getChatGPTUser() {
   return { email: "owner@example.com", userId: "test-owner" };
 }

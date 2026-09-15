@@ -1,4 +1,5 @@
 "use client";
+import { SignOutButton } from "@clerk/nextjs";
 import { useRef, useEffect, useState, type ReactNode } from "react";
 import {
   LayoutDashboard,
@@ -320,9 +321,11 @@ export function AdminEditor({
 export default function Admin({
   section,
   ownerEmail,
+  authMode,
 }: {
   section: string[];
   ownerEmail: string;
+  authMode: "demo" | "clerk" | "chatgpt";
 }) {
   const [s, setS] = useState(emptyState()),
     [revision, setRevision] = useState(0),
@@ -597,9 +600,21 @@ export default function Admin({
                 <small>{ownerEmail}</small>
               </div>
             </div>
-            <a className="signout" href="/signout-with-chatgpt?return_to=/">
-              Sign out
-            </a>
+            {authMode === "clerk" ? (
+              <SignOutButton redirectUrl="/">
+                <button className="signout" type="button">
+                  Sign out
+                </button>
+              </SignOutButton>
+            ) : authMode === "chatgpt" ? (
+              <a className="signout" href="/signout-with-chatgpt?return_to=/">
+                Sign out
+              </a>
+            ) : (
+              <a className="signout" href="/">
+                Exit dashboard
+              </a>
+            )}
           </SidebarFooter>
         </Sidebar>
         <SidebarInset>

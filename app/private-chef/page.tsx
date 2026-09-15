@@ -1,120 +1,105 @@
-import { Header, Footer } from "../public-shell";
-import { ArrowUpRight } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowUpRight, Check } from "lucide-react";
+import { Footer, Header } from "../public-shell";
+
+const occasions = [
+  ["Private dining", "A menu designed for your table, prepared and served in your home."],
+  ["Celebrations", "Birthdays, anniversaries and gatherings with food that feels personal."],
+  ["Intimate events", "A composed food experience for the people and setting you have in mind."],
+];
+
 export default function Page() {
   return (
     <>
-      <Header />
-      <main className="private-page">
-        <section className="service-hero">
-          <img
-            src="/images/private-dining.jpg"
-            alt="Gourmet pasta with colourful garnishes on a black plate"
-          />
-          <div>
-            <span className="eyebrow">PRIVATE CHEF & EVENTS · LONDON</span>
-            <h1>
-              A seat at your table.
-              <br />
-              <span className="italic">An occasion to remember.</span>
-            </h1>
+      <Header active="private" />
+      <main className="service-page service-page--private">
+        <section className="service-page-hero">
+          <div className="service-page-hero__copy">
+            <span className="service-kicker">Private dining · London</span>
+            <h1>Made around your table.</h1>
             <p>
-              Exceptional food, prepared around you. Bring a private chef into
-              your home or let us take care of the food for your next
-              celebration.
+              A private chef experience shaped around your guests, your home
+              and the atmosphere you want to create.
             </p>
-            <a href="/enquire?service=private" className="solid-cta gold">
-              Plan your occasion <ArrowUpRight size={19} />
-            </a>
+            <Link href="/enquire?service=private" className="brand-button">
+              Plan your occasion <ArrowUpRight aria-hidden="true" size={19} />
+            </Link>
+          </div>
+          <div className="service-page-hero__image">
+            <Image
+              src="/images/em2-private-chef.png"
+              alt="A Black private chef serving dinner to hosts in their London home"
+              fill
+              priority
+              sizes="(max-width: 800px) 100vw, 55vw"
+            />
           </div>
         </section>
-        <section className="service-intro">
-          <span className="eyebrow">YOUR OCCASION, YOUR WAY</span>
-          <h2>
-            All the pleasure.
-            <br />
-            <span className="italic">Every detail considered.</span>
-          </h2>
-          <p>
-            From an intimate dinner to a room full of your favourite people, we
-            shape the menu, preparation and service around the way you want to
-            gather.
-          </p>
+
+        <section className="service-offer">
+          <header>
+            <span className="section-index">01</span>
+            <h2>Your occasion, thoughtfully composed.</h2>
+            <p>
+              We begin with how you want the gathering to feel, then build the
+              menu and service around it.
+            </p>
+          </header>
+          <div className="service-offer__list">
+            {occasions.map(([title, text]) => (
+              <article key={title}>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
         </section>
-        <section className="service-grid">
-          <article>
-            <span>01</span>
-            <h3>Private dining</h3>
+
+        <section className="service-editorial">
+          <div className="service-editorial__image">
+            <Image
+              src="/images/chef.jpg"
+              alt="A Black chef preparing fresh ingredients in the kitchen"
+              fill
+              sizes="(max-width: 800px) 100vw, 48vw"
+            />
+          </div>
+          <div className="service-editorial__copy">
+            <span className="section-index">02</span>
+            <h2>You host. We take care of the food.</h2>
             <p>
-              A considered menu, cooked and presented in your home. Settle into
-              the conversation while we take care of the kitchen.
+              From the first menu conversation to the final plate, the details
+              are handled with calm, attentive service. You stay present with
+              your guests while we focus on the kitchen.
             </p>
-          </article>
-          <article>
-            <span>02</span>
-            <h3>Celebrations & events</h3>
-            <p>
-              Milestone birthdays, family gatherings and special evenings. Food
-              that feels as personal as the occasion.
-            </p>
-          </article>
-          <article>
-            <span>03</span>
-            <h3>On site or off site</h3>
-            <p>
-              Choose cooking at your venue or preparation in our kitchen, with
-              delivery and finishing arrangements agreed together.
-            </p>
-          </article>
-        </section>
-        <section className="chef-section">
-          <img
-            src="/images/chef.jpg"
-            alt="Chef in a red apron preparing fresh herbs in a kitchen"
-          />
-          <div>
-            <span className="eyebrow">CARE YOU CAN TASTE</span>
-            <h2>
-              In good hands.
-              <br />
-              <span className="italic">From the first idea.</span>
-            </h2>
-            <p>
-              Our approach brings restaurant-level attention to your own
-              setting: thoughtful ingredients, careful preparation and service
-              that lets you enjoy being the host.
-            </p>
-            <p>
-              Tell us what you love, who’s coming and how you want the evening
-              to feel. We’ll work through the menu, dietary requirements and
-              practical details with you.
-            </p>
+            <ul>
+              <li><Check aria-hidden="true" size={18} /> A menu shaped around your tastes</li>
+              <li><Check aria-hidden="true" size={18} /> Dietary requirements discussed clearly</li>
+              <li><Check aria-hidden="true" size={18} /> Preparation, service and kitchen reset agreed in advance</li>
+            </ul>
             <small>Photography illustrates our service style.</small>
           </div>
         </section>
-        <section className="process">
-          <span className="eyebrow">LET’S MAKE IT HAPPEN</span>
-          <h2>
-            Something special starts
-            <br />
-            with a conversation.
-          </h2>
-          <div className="process-steps">
-            <p>
-              <b>01 / Tell us your plans</b>Share your date, venue, guest count
-              and ideas.
-            </p>
-            <p>
-              <b>02 / Make it yours</b>We shape your menu and confirm the
-              details.
-            </p>
-            <p>
-              <b>03 / Enjoy the occasion</b>Let the food bring everyone
-              together.
-            </p>
+
+        <section className="service-process">
+          <div>
+            <span className="section-index">03</span>
+            <h2>From idea to table.</h2>
           </div>
-          <a className="solid-cta gold" href="/enquire?service=private">
-            Plan your occasion <ArrowUpRight size={19} />
-          </a>
+          <ol>
+            <li><span>01</span><div><h3>Share the occasion</h3><p>Tell us the date, location, guest count and what you have in mind.</p></div></li>
+            <li><span>02</span><div><h3>Shape the menu</h3><p>We refine the food, dietary needs and practical details with you.</p></div></li>
+            <li><span>03</span><div><h3>Enjoy your guests</h3><p>We arrive prepared and deliver the experience you agreed.</p></div></li>
+          </ol>
+        </section>
+
+        <section className="service-final-cta">
+          <p>Private dining · Celebrations · Intimate events</p>
+          <h2>Bring the restaurant experience home.</h2>
+          <Link href="/enquire?service=private" className="brand-button brand-button--light">
+            Start your enquiry <ArrowUpRight aria-hidden="true" size={19} />
+          </Link>
         </section>
       </main>
       <Footer />

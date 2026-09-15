@@ -6,20 +6,20 @@ export default function Page() {
       <Header />
       <main className="enquiry-page">
         <aside>
-          <span className="eyebrow">A GOOD MEAL STARTS HERE</span>
+          <span className="eyebrow">START A CONVERSATION</span>
           <h1>
-            Tell us what
+            Tell us about
             <br />
-            you have
+            the table you
             <br />
-            <span className="italic">in mind.</span>
+            <span className="italic">are planning.</span>
           </h1>
           <p>
-            From a table for two to a lunch for the whole team. Share a few
-            details and we’ll shape the next steps together.
+            A dinner at home or lunch for the whole team—share the essentials
+            and we will come back to you with the right next step.
           </p>
           <div className="enquiry-note">
-            LONDON & WITHIN THE M25
+            LONDON
             <br />
             <span>Every enquiry is personally reviewed.</span>
           </div>

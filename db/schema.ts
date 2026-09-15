@@ -1,11 +1,11 @@
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
-export const workspaces = sqliteTable("workspaces", {
+import { pgTable, text, integer, index } from "drizzle-orm/pg-core";
+export const workspaces = pgTable("workspaces", {
   id: text("id").primaryKey(),
   data: text("data").notNull(),
   revision: integer("revision").notNull().default(0),
   updatedAt: text("updated_at").notNull(),
 });
-export const enquiries = sqliteTable(
+export const enquiries = pgTable(
   "enquiries",
   {
     id: text("id").primaryKey(),
@@ -16,40 +16,40 @@ export const enquiries = sqliteTable(
   },
   (t) => [index("idx_enquiries_created").on(t.createdAt)],
 );
-export const rateLimits = sqliteTable("rate_limits", {
+export const rateLimits = pgTable("rate_limits", {
   id: text("id").primaryKey(),
   count: integer("count").notNull(),
 });
-export const emailDeliveries = sqliteTable("email_deliveries", {
+export const emailDeliveries = pgTable("email_deliveries", {
   id: text("id").primaryKey(),
   status: text("status").notNull(),
   providerId: text("provider_id"),
   error: text("error"),
   updatedAt: text("updated_at").notNull(),
 });
-export const workspaceBackups = sqliteTable("workspace_backups", {
+export const workspaceBackups = pgTable("workspace_backups", {
   id: text("id").primaryKey(),
   data: text("data").notNull(),
   revision: integer("revision").notNull(),
   createdAt: text("created_at").notNull(),
 });
-export const enquiryImports = sqliteTable("enquiry_imports", {
+export const enquiryImports = pgTable("enquiry_imports", {
   enquiryId: text("enquiry_id").primaryKey(),
   status: text("status").notNull().default("pending"),
   error: text("error"),
   updatedAt: text("updated_at").notNull(),
 });
-export const researchCache = sqliteTable("research_cache", {
+export const researchCache = pgTable("research_cache", {
   id: text("id").primaryKey(),
   data: text("data").notNull(),
   expiresAt: text("expires_at").notNull(),
 });
-export const workspaceSendLocks = sqliteTable("workspace_send_locks", {
+export const workspaceSendLocks = pgTable("workspace_send_locks", {
   workspaceId: text("workspace_id").primaryKey(),
   draftId: text("draft_id").notNull(),
   expiresAt: text("expires_at").notNull(),
 });
-export const crmDigestDeliveries = sqliteTable(
+export const crmDigestDeliveries = pgTable(
   "crm_digest_deliveries",
   {
     id: text("id").primaryKey(),

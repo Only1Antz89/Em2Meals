@@ -1,17 +1,15 @@
 # EM² Meals
 
-Private chef and corporate catering website with an owner operations pilot. Built with the Sites Vinext/React/TypeScript starter, Cloudflare Workers and D1.
+Private chef and corporate catering website with an owner operations pilot. Built with Next.js, React, TypeScript, Neon Postgres and Vercel Blob.
 
 ## Run locally
 
-Use Node 22.13 or later. Install the lockfile with `npm ci`. Copy `.env.example` to `.env`; local development sign-in uses `seedy@sites.test`, so set `OWNER_EMAILS=seedy@sites.test` **only locally**. Never put that test identity in production.
+Use Node 22.13 or later. Install the lockfile with `npm ci`. Copy `.env.example` to `.env.local`, or pull the connected Vercel development environment with `vercel env pull .env.local`. Configure `OWNER_EMAILS` with the real owner allowlist.
 
-Run `npm run build` to generate the local Worker configuration, then apply both checked-in migrations to a new local database:
+Apply the checked-in Postgres migrations, then start Next.js:
 
 ```sh
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_gorgeous_xorn.sql
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_operations.sql
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0002_crm.sql
+npm run db:migrate
 npm run dev
 ```
 
@@ -32,12 +30,17 @@ API smoke tests require the local development server and create clearly labelled
 
 ## Owner setup and integrations
 
-Use **Sites runtime environment configuration** for production variables; `.env` is ignored and never packaged. The site fails closed without an owner allowlist.
+Use **Vercel project environment variables** for production values; local `.env` files are ignored by Git. The site fails closed without an owner allowlist. `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are injected automatically by the connected Neon and Blob resources.
 
 | Variable              | Purpose                                                                       |
 | --------------------- | ----------------------------------------------------------------------------- |
 | `OWNER_EMAILS`        | Comma-separated allowed ChatGPT owner emails.                                 |
 | `OWNER_IDS`           | Optional site-scoped ChatGPT identity allowlist.                              |
+| `AUTH_MODE`           | `demo` temporarily opens owner routes; switch to `clerk` after connecting Clerk. |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk browser key, supplied by the Marketplace integration.       |
+| `CLERK_SECRET_KEY`    | Clerk server key, supplied by the Marketplace integration.                   |
+| `DATABASE_URL`        | Neon Postgres connection string (managed by the Vercel integration).          |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob credential used for owner recipe-image uploads.                 |
 | `GEMINI_API_KEY`      | Server-side Gemini API credential.                                            |
 | `GEMINI_MODEL`        | Defaults to `gemini-3.8-flash`; set a supported model for the Google project. |
 | `GOOGLE_MAPS_API_KEY` | Server-side key with Places API (New) and Routes API enabled.                 |
@@ -53,9 +56,9 @@ Complete kitchen address, measured UK MPG, current fuel price, VAT settings and 
 
 Public `POST /api/enquiries` validates and preserves the original request, with a unique request key, payload hash and hourly abuse limit. Guest submissions cannot pre-approve allergy reviews. A retryable importer automatically matches the normalised email to a CRM contact and creates an enquiry-stage order. Existing owner-maintained contact details are preserved. Older unconverted enquiries are backfilled on dashboard refresh. Import failures retain the original submission. The owner reviews menu suggestions, quantities, individual requirements, date and venue before accepting a quote.
 
-Admin pages and all `/api/admin/*` routes verify ChatGPT authentication and the owner allowlist server-side. Mutations require a matching Origin. ChatGPT identity headers are trusted only behind Sites dispatch; the stock local development plugin strips forged headers and provides its documented test identity. Do not expose a raw Worker origin outside this trusted deployment arrangement.
+Admin pages and all `/api/admin/*` routes verify ChatGPT authentication and the owner allowlist server-side. Mutations require a matching Origin. Deploy behind the identity-aware ingress that supplies the documented ChatGPT identity headers; the owner API fails closed when those headers are absent.
 
-D1 tables store original enquiries, email send claims and separate live/sample workspace aggregates. Each aggregate contains typed customer, order, quote, recipe, ingredient, batch, movement, supplier, purchase, waste, feedback, finance, draft and audit records. Revision-checked atomic updates prevent lost writes and half-applied inventory operations. This intentionally coarse transaction boundary suits a small single-owner pilot. Before high-volume or multi-kitchen use, migrate the aggregates into indexed entity tables with bounded list APIs. D1 is the source of truth; browser storage is not used for business records.
+Neon Postgres tables store original enquiries, email send claims and separate live/sample workspace aggregates. Each aggregate contains typed customer, order, quote, recipe, ingredient, batch, movement, supplier, purchase, waste, feedback, finance, draft and audit records. Revision-checked atomic updates prevent lost writes and half-applied inventory operations. This intentionally coarse transaction boundary suits a small single-owner pilot. Before high-volume or multi-kitchen use, migrate the aggregates into indexed entity tables with bounded list APIs. Postgres is the source of truth; browser storage is not used for business records. Recipe images uploaded by an owner are stored in the connected public Vercel Blob store, while only their URLs are saved in the workspace state.
 
 Confirmed orders retain item and ingredient cost snapshots. Reservation uses dated eligible batches in expiry order. Preparation and cooking retain reservations. Packaging atomically deducts actual usage and releases reservations exactly once. Extra usage updates reserve additional ingredients immediately. Cancellation before preparation releases stock; prepared/cooked orders require consumed-versus-reusable reconciliation. Legacy records already marked consumed cannot deduct again. Recipe changes that affect confirmed orders require a replacement recipe/order. Actual waste cost is an allocation of already-recorded costs, not an extra deduction from the ledger. Only stock spoilage deducts stock in the waste workflow.
 

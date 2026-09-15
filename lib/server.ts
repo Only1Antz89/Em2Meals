@@ -1,19 +1,24 @@
 import { ZodError } from "zod";
-import { env } from "cloudflare:workers";
+import { getDb } from "@/db";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { authMode } from "./auth-mode";
 import { emptyState, type State, type Command, applyCommand } from "./domain";
 import { sampleState } from "./sample";
 import { normaliseState, reconcileStock } from "./operations";
 import { ensureOperationsTables } from "./upgrade-server";
-export const config = () => env as unknown as Record<string, any>;
+declare global {
+  var __EM2_TEST_ENV__: Record<string, unknown> | undefined;
+}
+
+export const config = () =>
+  (globalThis.__EM2_TEST_ENV__ || process.env) as Record<string, any>;
 export function database() {
-  const db = config().DB as D1Database | undefined;
-  if (!db) throw Error("Database unavailable. Please try again later.");
-  return db;
+  return getDb();
 }
 export async function owner() {
   const user = await getChatGPTUser();
   if (!user) return null;
+  if (authMode() === "demo") return user;
   const emails = String(config().OWNER_EMAILS || "")
     .split(",")
     .map((x) => x.trim().toLowerCase())

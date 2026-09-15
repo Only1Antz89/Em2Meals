@@ -2,6 +2,7 @@ import { requireChatGPTUser } from "@/app/chatgpt-auth";
 import { owner } from "@/lib/server";
 import { Brand } from "@/app/public-shell";
 import Admin from "@/app/admin/admin-client";
+import { authMode } from "@/lib/auth-mode";
 export const dynamic = "force-dynamic";
 export default async function Page({
   params,
@@ -26,5 +27,18 @@ async function Gate({ section }: { section: string[] }) {
         <a href="/">Back to EM² Meals</a>
       </main>
     );
-  return <Admin section={section} ownerEmail={user.email} />;
+  return (
+    <>
+      {authMode() === "demo" && (
+        <div className="demo-access-banner" role="status">
+          Demo mode: owner authentication is temporarily disabled.
+        </div>
+      )}
+      <Admin
+        section={section}
+        ownerEmail={user.email}
+        authMode={authMode()}
+      />
+    </>
+  );
 }

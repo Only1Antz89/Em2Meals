@@ -8,10 +8,9 @@ export function BrandMark({ className = "" }: { className?: string }) {
       aria-hidden="true"
       focusable="false"
     >
-      <rect x="3" y="3" width="58" height="58" rx="3" fill="none" stroke="currentColor" strokeWidth="3" />
-      <path d="M15 14v13c0 6 4 10 9 10s9-4 9-10V14M21 14v13m6-13v13M24 37l22 18" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M45 13c-6 0-10 6-10 14 0 7 4 12 10 12s10-5 10-12c0-8-4-14-10-14Zm0 0c-3 4-5 9-5 14s2 9 5 12m0-26c3 4 5 9 5 14s-2 9-5 12m0-26v26M45 39 18 55" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="32" cy="47" r="3.7" fill="var(--brand-gold, #d4b36e)" />
+      <path d="M25 12C13 15 7 24 7 34s6 19 18 22M40 12c11 4 17 12 17 22s-6 18-17 22" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <path d="M22 19c-7 4-11 9-11 15s4 11 11 15M43 19c7 4 10 9 10 15s-4 11-11 15" fill="none" stroke="var(--brand-accent, #8096a2)" strokeWidth="2" strokeLinecap="round" opacity=".92" />
+      <path d="M27 8v17c0 5 3 8 6 9v19c0 2 1 4 2 4s2-2 2-4V34c3-1 6-4 6-9V8M32 8v17m6-17v17" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -31,8 +30,14 @@ export function Brand({
     >
       {!admin && <BrandMark className="brand__mark" />}
       <span className="brand__wordmark">
-        <strong>{admin ? "Em2" : "Fork Goodness Baked"}</strong>
-        <small>{admin ? "Catering Platform" : "Artisanal Goodness"}</small>
+        <strong
+          style={admin ? undefined : { fontFamily: '"Iowan Old Style", Baskerville, Georgia, serif', fontSize: "1rem", fontWeight: 500, letterSpacing: "0.06em" }}
+        >
+          {admin ? "Em2" : "Fork Goodness"}
+        </strong>
+        <small style={admin ? undefined : { letterSpacing: "0.5em" }}>
+          {admin ? "Catering Platform" : "Baked"}
+        </small>
       </span>
     </Link>
   );

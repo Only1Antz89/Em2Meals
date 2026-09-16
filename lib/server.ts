@@ -5,13 +5,16 @@ import { authMode } from "./auth-mode";
 import { emptyState, type State, type Command, applyCommand } from "./domain";
 import { sampleState } from "./sample";
 import { normaliseState, reconcileStock } from "./operations";
-import { ensureOperationsTables } from "./upgrade-server";
+import { assertStateIntegrity, assertStateShape } from "./state-integrity";
 declare global {
   var __EM2_TEST_ENV__: Record<string, unknown> | undefined;
 }
 
 export const config = () =>
-  (globalThis.__EM2_TEST_ENV__ || process.env) as Record<string, any>;
+  (globalThis.__EM2_TEST_ENV__ || process.env) as Record<
+    string,
+    string | undefined
+  >;
 export function database() {
   return getDb();
 }
@@ -37,7 +40,6 @@ export function sameOrigin(req: Request) {
     throw Error("Invalid request origin");
 }
 export async function loadState(mode = "live") {
-  await ensureOperationsTables();
   const id = mode === "sample" ? "sample" : "live";
   const db = database();
   let row = await db
@@ -58,17 +60,25 @@ export async function loadState(mode = "live") {
       .first<{ data: string; revision: number }>();
   }
   if (!row) throw Error("Database unavailable");
-  const original = JSON.parse(row.data) as State;
-  if (!original.schemaVersion || original.schemaVersion < 4) {
+  const original = JSON.parse(row.data) as unknown;
+  assertStateShape(original);
+  if (!original.schemaVersion || original.schemaVersion < 5) {
     await db
       .prepare(
         "INSERT OR IGNORE INTO workspace_backups(id,data,revision,created_at) VALUES(?,?,?,?)",
       )
-      .bind(`${id}:before-v4`, row.data, row.revision, new Date().toISOString())
+      .bind(`${id}:before-v5`, row.data, row.revision, new Date().toISOString())
       .run();
   }
-  const state = normaliseState(original);
+  // Sample workspaces are disposable demonstrations. Refresh an older sample
+  // snapshot as a unit so the v5 recipe imagery, stock, purchasing history and
+  // costing examples stay internally consistent. Live data is only normalised.
+  const state =
+    id === "sample" && (!original.schemaVersion || original.schemaVersion < 5)
+      ? sampleState()
+      : normaliseState(original);
   reconcileStock(state);
+  assertStateIntegrity(state);
   if (id === "live" && state.drafts.length) {
     const deliveries = await db
       .prepare("SELECT id,status,updated_at FROM email_deliveries")
@@ -93,6 +103,7 @@ export async function commitState(
   revision: number,
   sendLock?: string,
 ) {
+  assertStateIntegrity(state);
   const result = await database()
     .prepare(
       "UPDATE workspaces SET data=?,revision=revision+1,updated_at=? WHERE id=? AND revision=? AND NOT EXISTS (SELECT 1 FROM workspace_send_locks WHERE workspace_id=? AND expires_at>? AND draft_id<>?)",
@@ -108,6 +119,56 @@ export async function commitState(
     )
     .run();
   if (result.meta.changes !== 1)
+    throw Error("Another change was saved. Reload and try again.");
+  return revision + 1;
+}
+
+export async function commitStateAndDelivery(
+  mode: string,
+  state: State,
+  revision: number,
+  delivery: {
+    id: string;
+    status: "sending" | "uncertain" | "failed" | "sent";
+    providerId?: string;
+    error?: string;
+  },
+  sendLock?: string,
+) {
+  assertStateIntegrity(state);
+  const db = database();
+  const workspaceId = mode === "sample" ? "sample" : "live";
+  const updatedAt = new Date().toISOString();
+  const results = await db.batch([
+    db
+      .prepare(
+        "UPDATE workspaces SET data=?,revision=revision+1,updated_at=? WHERE id=? AND revision=? AND NOT EXISTS (SELECT 1 FROM workspace_send_locks WHERE workspace_id=? AND expires_at>? AND draft_id<>?)",
+      )
+      .bind(
+        JSON.stringify(state),
+        updatedAt,
+        workspaceId,
+        revision,
+        workspaceId,
+        updatedAt,
+        sendLock || "",
+      ),
+    db
+      .prepare(
+        "UPDATE email_deliveries SET status=?,provider_id=?,error=?,updated_at=? WHERE id=? AND EXISTS (SELECT 1 FROM workspaces WHERE id=? AND revision=? AND updated_at=?)",
+      )
+      .bind(
+        delivery.status,
+        delivery.providerId || null,
+        delivery.error || null,
+        updatedAt,
+        delivery.id,
+        workspaceId,
+        revision + 1,
+        updatedAt,
+      ),
+  ]);
+  if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1)
     throw Error("Another change was saved. Reload and try again.");
   return revision + 1;
 }
@@ -171,7 +232,6 @@ export async function jsonBody(req: Request) {
 }
 
 export async function importEnquiries() {
-  await ensureOperationsTables();
   const db = database();
   const pending = await db
     .prepare(

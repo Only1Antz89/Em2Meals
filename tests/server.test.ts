@@ -84,6 +84,28 @@ test("public enquiries automatically create CRM and orders; duplicate requests s
   assert.equal(state.customers[0].name, "Contact");
   assert.equal(state.customers[0].notes, "Owner notes");
 });
+test("workspace commits reject duplicate and orphaned business records", async () => {
+  resetDB();
+  const state = emptyState();
+  state.customers.push({
+    id: "customer",
+    name: "Customer",
+    company: "",
+    email: "customer@example.com",
+    phone: "",
+    notes: "",
+  });
+  state.customers.push({ ...state.customers[0] });
+  await assert.rejects(commitState("live", state, 0), /duplicate id customer/);
+  state.customers.pop();
+  state.recipes.push({
+    id: "recipe",
+    name: "Recipe",
+    variant: "Standard",
+    lines: [{ ingredientId: "missing", quantity: 1 }],
+  });
+  await assert.rejects(commitState("live", state, 0), /references missing id/);
+});
 test("pending and historical enquiries backfill safely and never enter sample data", async () => {
   resetDB();
   sqlite

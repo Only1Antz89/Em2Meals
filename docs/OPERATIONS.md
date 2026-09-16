@@ -59,7 +59,7 @@ Four Recharts SVG panels show monthly sales/cash, service activity, cost composi
 
 ## Migration and deployment
 
-Run database migrations `0000` and `0001` for new databases. Existing deployments use additive, idempotent infrastructure setup. Versioned JSON normalisation writes an original-state backup in `workspace_backups` before advancing to v3, preserving the prior workspace and revision. Prior version backups remain intact. Single-supplier ingredient links become preferred offerings. Existing `consumed` flags, references, quotes and stock history are retained. Never clear a legacy consumed flag to re-run packaging.
+Run all checked-in Postgres migrations with the direct `DATABASE_URL_UNPOOLED` connection. Application requests continue using the pooled `DATABASE_URL`. Schema creation and upgrades happen only through migrations; request handlers never need DDL permissions. Versioned JSON normalisation writes an original-state backup in `workspace_backups` before advancing to v4, preserving the prior workspace and revision. Prior version backups remain intact. Single-supplier ingredient links become preferred offerings. Existing `consumed` flags, references, quotes and stock history are retained. Never clear a legacy consumed flag to re-run packaging.
 
 Before rollout, retain the database backup and inspect both live/sample records. Business identity, VAT treatment and real data still require owner setup. Gemini, Google Places/Routes and Resend require server-side credentials and provider configuration. No live provider result or email delivery is fabricated when credentials are missing. No deployment is performed by the verification scripts.
 

@@ -473,6 +473,22 @@ export default function BusinessOverview({
         </Panel>
       </div>
       <Panel title="Customers, suppliers and markets">
+        <nav className="analytics-subtabs" aria-label="Business breakdown">
+          {tabs.map((tab) => (
+            <Button
+              key={tab}
+              size="sm"
+              variant={detail === tab ? "default" : "outline"}
+              aria-current={detail === tab ? "page" : undefined}
+              onClick={() => {
+                updateQuery({ detail: tab, focus: "" });
+                setPage(0);
+              }}
+            >
+              {tab}
+            </Button>
+          ))}
+        </nav>
         <Pick
           label="Rank by"
           value={sort}

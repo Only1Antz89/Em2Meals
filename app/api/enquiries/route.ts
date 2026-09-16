@@ -48,6 +48,10 @@ export async function POST(req: Request) {
     }
     const ip = req.headers.get("cf-connecting-ip") || "local";
     const window = `${ip}:${Math.floor(Date.now() / 3600000)}`;
+    const now = new Date();
+    const expiresAt = new Date(
+      Math.floor(now.getTime() / 3600000) * 3600000 + 3600000,
+    ).toISOString();
     const bucket = Array.from(
       new Uint8Array(
         await crypto.subtle.digest("SHA-256", new TextEncoder().encode(window)),
@@ -55,11 +59,15 @@ export async function POST(req: Request) {
     )
       .map((x) => x.toString(16).padStart(2, "0"))
       .join("");
+    await db
+      .prepare("DELETE FROM rate_limits WHERE expires_at<=?")
+      .bind(now.toISOString())
+      .run();
     const rate = await db
       .prepare(
-        "INSERT INTO rate_limits(id,count) VALUES(?,1) ON CONFLICT(id) DO UPDATE SET count=count+1 RETURNING count",
+        "INSERT INTO rate_limits(id,count,expires_at) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=count+1,expires_at=excluded.expires_at RETURNING count",
       )
-      .bind(bucket)
+      .bind(bucket, expiresAt)
       .first<{ count: number }>();
     if ((rate?.count || 0) > 20)
       return Response.json(

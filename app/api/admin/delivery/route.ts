@@ -6,7 +6,7 @@ import {
   errorResponse,
   database,
   loadState,
-  commitState,
+  commitStateAndDelivery,
 } from "@/lib/server";
 export async function POST(req: Request) {
   try {
@@ -51,13 +51,11 @@ export async function POST(req: Request) {
       action: `delivery-verified:${p.outcome}:${p.note}`,
       target: d.id,
     });
-    const next = await commitState("live", state, revision);
-    await db
-      .prepare(
-        "UPDATE email_deliveries SET status=?,error=?,updated_at=? WHERE id=?",
-      )
-      .bind(d.deliveryStatus, `Owner verification: ${p.note}`, at, d.id)
-      .run();
+    const next = await commitStateAndDelivery("live", state, revision, {
+      id: d.id,
+      status: d.deliveryStatus,
+      error: `Owner verification: ${p.note}`,
+    });
     return Response.json({ state, revision: next });
   } catch (e) {
     return errorResponse(e);

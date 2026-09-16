@@ -166,6 +166,10 @@ export async function POST(req: Request) {
         result.profile = profile.parse(JSON.parse(extracted.text));
       }
       await database()
+        .prepare("DELETE FROM research_cache WHERE expires_at<=?")
+        .bind(new Date().toISOString())
+        .run();
+      await database()
         .prepare(
           "INSERT INTO research_cache(id,data,expires_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,expires_at=excluded.expires_at",
         )

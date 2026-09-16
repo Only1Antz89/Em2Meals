@@ -1,11 +1,9 @@
 import { config, database } from "./server";
 import { googleJSON } from "./integrations";
 import { type Place, placeSchema } from "./operations";
-import { ensureOperationsTables } from "./upgrade-server";
 export async function searchPlaces(query: string): Promise<Place[]> {
   if (!config().GOOGLE_MAPS_API_KEY)
     throw Error("Google Maps setup required. Enter the venue manually.");
-  await ensureOperationsTables();
   const key = `places:${query.trim().toLowerCase()}`;
   const cached = await database()
     .prepare("SELECT data FROM research_cache WHERE id=? AND expires_at>?")
@@ -55,6 +53,10 @@ export async function searchPlaces(query: string): Promise<Place[]> {
           )?.longText || "",
       }),
   );
+  await database()
+    .prepare("DELETE FROM research_cache WHERE expires_at<=?")
+    .bind(new Date().toISOString())
+    .run();
   await database()
     .prepare(
       "INSERT INTO research_cache(id,data,expires_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,expires_at=excluded.expires_at",

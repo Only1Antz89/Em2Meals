@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useOps } from "./ops-context";
 import { Panel, GridTable, Tag } from "./admin-client";
 import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 import { Field } from "@/components/form-controls";
 import { VenueSearch } from "@/components/venue-search";
 import { money, today, available, type Order, type State } from "@/lib/domain";
@@ -685,10 +686,14 @@ export function SupplierInsights({
   section = "overview",
   onAddSupplier,
   onEditSupplier,
+  selectedSupplierId,
+  onSelectSupplier,
 }: {
   section?: "overview" | "options";
   onAddSupplier?: () => void;
   onEditSupplier?: (supplier: SupplierRecord) => void;
+  selectedSupplierId?: string;
+  onSelectSupplier?: (supplierId: string) => void;
 }) {
   const { s, api, run, open, busy } = useOps();
   const [result, setResult] = useState<{
@@ -699,6 +704,160 @@ export function SupplierInsights({
     } | null>(null),
     [error, setError] = useState("");
   const buying = proposals(s);
+  const selectedSupplier = selectedSupplierId
+    ? s.suppliers.find((supplier) => supplier.id === selectedSupplierId)
+    : undefined;
+
+  if (section === "overview" && selectedSupplier) {
+    const supplier = selectedSupplier;
+    const offerings = s.offerings.filter(
+      (offering) => offering.supplierId === supplier.id,
+    );
+    const purchases = s.purchases
+      .filter((purchase) => purchase.supplierId === supplier.id)
+      .sort((a, b) => (b.at || b.eta).localeCompare(a.at || a.eta));
+    const requests = s.drafts
+      .filter((draft) => draft.supplierId === supplier.id && draft.proposal)
+      .sort((a, b) => b.at.localeCompare(a.at));
+    const history = [
+      ...requests.map((request) => ({
+        at: request.at,
+        date: request.at.slice(0, 10),
+        type: "Purchase request",
+        detail: request.subject,
+        status: request.purchaseConfirmed
+          ? "Purchase confirmed"
+          : request.superseded
+            ? "Closed"
+            : request.sentAt
+              ? "Sent — awaiting response"
+              : "Draft",
+      })),
+      ...supplier.comms.map((communication) => ({
+        at: communication.at,
+        date: new Date(communication.at).toLocaleDateString("en-GB"),
+        type: "Communication",
+        detail: communication.message,
+        status: "Logged",
+      })),
+    ].sort((a, b) => b.at.localeCompare(a.at));
+    return (
+      <div className="supplier-detail">
+        <div className="supplier-detail-actions">
+          <Button variant="ghost" onClick={() => onSelectSupplier?.("")}>
+            <ArrowLeft size={16} />
+            All suppliers
+          </Button>
+          {onEditSupplier && (
+            <Button variant="outline" onClick={() => onEditSupplier(supplier)}>
+              Edit supplier
+            </Button>
+          )}
+        </div>
+        <Panel title={supplier.name}>
+          <div className="supplier-profile">
+            <SupplierMark supplier={supplier} />
+            <div>
+              <strong>{supplier.contactName || "No contact named"}</strong>
+              <span>{supplier.contactRole || "Contact role not recorded"}</span>
+              <a href={`mailto:${supplier.email}`}>{supplier.email}</a>
+              {supplier.phone && (
+                <a href={`tel:${supplier.phone}`}>{supplier.phone}</a>
+              )}
+            </div>
+            <dl>
+              <div>
+                <dt>Delivery</dt>
+                <dd>{money(supplier.deliveryCharge)}</dd>
+              </div>
+              <div>
+                <dt>Minimum order</dt>
+                <dd>{money(supplier.minimumOrder)}</dd>
+              </div>
+              <div>
+                <dt>Lead time</dt>
+                <dd>
+                  {supplier.leadDays}{" "}
+                  {supplier.leadDays === 1 ? "day" : "days"}
+                </dd>
+              </div>
+            </dl>
+          </div>
+          {(supplier.businessDetails || supplier.notes) && (
+            <p className="panel-note">
+              {[supplier.businessDetails, supplier.notes]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
+        </Panel>
+        <Panel title={`Options · ${offerings.length}`}>
+          <GridTable
+            heads={["Ingredient", "Pack", "Price", "VAT", "Status"]}
+            rows={offerings.map((offering) => {
+              const ingredient = s.ingredients.find(
+                (item) => item.id === offering.ingredientId,
+              );
+              return [
+                ingredient?.name || "Unknown ingredient",
+                `${offering.packQuantity} ${ingredient?.unit || "units"}`,
+                offering.packCost === null
+                  ? "Price not recorded"
+                  : money(offering.packCost),
+                offering.vatRate === null
+                  ? "VAT not recorded"
+                  : `${offering.vatRate}% · ${offering.priceMode}`,
+                <Tag key="status" tone={offering.preferred ? "green" : ""}>
+                  {offering.preferred ? "Preferred" : "Alternative"}
+                </Tag>,
+              ];
+            })}
+            empty="No ingredient options are linked to this supplier yet."
+          />
+        </Panel>
+        <Panel title={`Purchases · ${purchases.length}`}>
+          <GridTable
+            heads={[
+              "Ordered",
+              "Ingredient",
+              "Ordered / received",
+              "Cost",
+              "ETA",
+              "Status",
+              "Reference / notes",
+            ]}
+            rows={purchases.map((purchase) => [
+              purchase.at?.slice(0, 10) || "Date not recorded",
+              s.ingredients.find(
+                (item) => item.id === purchase.ingredientId,
+              )?.name || "Unknown ingredient",
+              `${purchase.quantity} / ${purchase.receivedQuantity || 0}`,
+              money(purchase.cost),
+              purchase.eta,
+              <Tag key="status">{purchase.status}</Tag>,
+              purchase.requestId || purchase.notes || "—",
+            ])}
+            empty="No purchases have been recorded for this supplier."
+          />
+        </Panel>
+        <Panel
+          title={`Requests & communication · ${requests.length + supplier.comms.length}`}
+        >
+          <GridTable
+            heads={["Date", "Type", "Subject / note", "Status"]}
+            rows={history.map((item) => [
+              item.date,
+              item.type,
+              item.detail,
+              item.status,
+            ])}
+            empty="No requests or communication have been recorded for this supplier."
+          />
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <>
       {section === "overview" && (
@@ -735,7 +894,15 @@ export function SupplierInsights({
                 <header className="supplier-card-header">
                   <SupplierMark key={`${sup.logoUrl}-${sup.website}`} supplier={sup} />
                   <div>
-                    <h3>{sup.name}</h3>
+                    <h3>
+                      <button
+                        type="button"
+                        className="supplier-name-link"
+                        onClick={() => onSelectSupplier?.(sup.id)}
+                      >
+                        {sup.name}
+                      </button>
+                    </h3>
                     {sup.website && websiteLabel ? (
                       <a href={sup.website} target="_blank" rel="noreferrer">
                         {websiteLabel} ↗

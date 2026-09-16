@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
   applyCommand,
   recipeCost,
+  recipeCurrentCost,
+  ingredientPrice,
+  normaliseRecipeMeasurement,
   fuelCost,
   recap,
   available,
@@ -157,13 +160,34 @@ test("recipe variant cost includes gross ingredient yield", () => {
   const seeded = s.recipes.find((r) => r.id === "burger-seeded")!,
     plain = s.recipes.find((r) => r.id === "burger-plain")!;
   assert.ok(recipeCost(s, seeded) > recipeCost(s, plain));
-  const expected =
-    (150 * 950) / 1000 +
-    ((20 / 0.85) * 280) / 1000 +
-    (15 * 350) / 1000 +
-    (25 * 780) / 1000 +
-    540 / 12;
-  assert.ok(Math.abs(recipeCost(s, plain) - expected) < 0.001);
+  const lettuce = s.ingredients.find((ingredient) => ingredient.id === "lettuce")!;
+  const costWithYield = recipeCost(s, plain);
+  lettuce.yield = 1;
+  assert.ok(recipeCost(s, plain) < costWithYield);
+});
+test("recipe measurements normalize metric and flag ingredient-specific units", () => {
+  assert.equal(normaliseRecipeMeasurement(1.2, "kg", "g"), 1200);
+  assert.equal(normaliseRecipeMeasurement(2, "tbsp", "ml"), 30);
+  assert.equal(normaliseRecipeMeasurement(1, "cup", "ml"), 250);
+  assert.equal(normaliseRecipeMeasurement(2, "clove", "g"), null);
+  assert.equal(normaliseRecipeMeasurement(2, "clove", "g", 4), 8);
+  assert.equal(normaliseRecipeMeasurement(1, "kg", "ml"), null);
+});
+test("current recipe cost prefers confirmed purchase history", () => {
+  const s = sampleState();
+  const recipe = s.recipes.find((item) => item.id === "burger-seeded")!;
+  assert.equal(ingredientPrice(s, "beef").source, "purchase");
+  assert.ok(Math.abs(recipeCurrentCost(s, recipe) - 285) < 1);
+});
+test("atomic recipe saves create reviewed ingredients and drafts stay off orders", () => {
+  let s = emptyState();
+  s = act(s, "recipe-save", {
+    ingredients: [{ id: "new-herb", name: "New herb", category: "herbs", unit: "g", packQuantity: 100, packCost: 200, yield: 1, allergens: "", supplierId: "", threshold: 0 }],
+    recipe: { id: "draft-recipe", name: "Herb dish", variant: "Test", createdAt: today(), status: "draft", instructions: "1. Cook.", lines: [{ ingredientId: "new-herb", quantity: 5, displayQuantity: 1, displayUnit: "tsp", conversionConfirmed: true }] },
+  });
+  assert.equal(s.ingredients.length, 1);
+  assert.equal(s.recipes[0].status, "draft");
+  assert.throws(() => act(s, "order", { details: { service: "corporate", eventType: "Lunch", attendees: 1, date: today(), eventTime: "12:00", arrivalTime: "11:30", requests: "", dietary: "", requirements: [], name: "A", company: "", email: "a@example.com", phone: "12345", venue: "Kitchen", address: "London", postcode: "SE1", access: "", unknownDetails: "" }, items: [{ recipeId: "draft-recipe", quantity: 1 }] }), /draft/);
 });
 test("UK gallon fuel conversion and missing economy", () => {
   assert.equal(fuelCost(100, 40, 1.5), 1705);

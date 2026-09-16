@@ -8,6 +8,7 @@ export function resetDB() {
   sqlite.exec(readFileSync("drizzle/0000_gorgeous_xorn.sql", "utf8"));
   sqlite.exec(readFileSync("drizzle/0001_operations.sql", "utf8"));
   sqlite.exec(readFileSync("drizzle/0002_crm.sql", "utf8"));
+  sqlite.exec(readFileSync("drizzle/0003_hardening.sql", "utf8"));
 }
 class Statement {
   values: (string | number | null)[] = [];

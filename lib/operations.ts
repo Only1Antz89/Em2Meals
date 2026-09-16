@@ -11,24 +11,40 @@ import {
 
 export const seasons = ["Spring", "Summer", "Autumn", "Winter"] as const;
 export const categories = [
-  "beef",
-  "chicken",
-  "rice",
-  "pasta",
-  "dairy",
+  "meat",
+  "poultry",
+  "fish & seafood",
   "vegetables",
-  "fish",
-  "tofu",
+  "fruit",
+  "carbohydrates",
+  "bakery",
+  "dairy",
+  "eggs",
+  "herbs",
+  "spices",
+  "condiments",
+  "oils & fats",
+  "liquids",
+  "plant proteins",
+  "other",
 ] as const;
 export const symbols: Record<string, string> = {
-  beef: "🥩",
-  chicken: "🍗",
-  rice: "🍚",
-  pasta: "🍝",
-  dairy: "🥛",
+  meat: "🥩",
+  poultry: "🍗",
+  "fish & seafood": "🐟",
   vegetables: "🥬",
-  fish: "🐟",
-  tofu: "◻",
+  fruit: "🍓",
+  carbohydrates: "🌾",
+  bakery: "🥖",
+  dairy: "🥛",
+  eggs: "🥚",
+  herbs: "🌿",
+  spices: "✦",
+  condiments: "◌",
+  "oils & fats": "◒",
+  liquids: "💧",
+  "plant proteins": "◇",
+  other: "•",
 };
 const short = z.string().max(500);
 const cents = z.number().int().nonnegative().max(1e12);
@@ -172,9 +188,33 @@ export function normaliseState(s: State): State {
   s.settings.priceMode ||= "exclusive";
   s.settings.warningDays ??= 7;
   s.settings.urgentDays ??= 3;
+  s.settings.recipeEditorMode ||= "workspace";
+  const legacyCategories: Record<string, (typeof categories)[number]> = {
+    beef: "meat",
+    chicken: "poultry",
+    fish: "fish & seafood",
+    rice: "carbohydrates",
+    pasta: "carbohydrates",
+    tofu: "plant proteins",
+  };
+  for (const ingredient of s.ingredients) {
+    const category = ingredient.category as string | undefined;
+    if (category && legacyCategories[category])
+      ingredient.category = legacyCategories[category];
+  }
   for (const r of s.recipes) {
     r.collections ||= [];
     r.imageUrl ||= "";
+    r.createdAt ||= "1970-01-01";
+    r.instructions ||= "";
+    r.status ||= "active";
+    for (const line of r.lines) {
+      line.displayQuantity ??= line.quantity;
+      line.displayUnit ||= s.ingredients.find(
+        (ingredient) => ingredient.id === line.ingredientId,
+      )?.unit;
+      line.conversionConfirmed ??= true;
+    }
   }
   for (const o of s.orders) {
     o.usage ||= [];
@@ -204,7 +244,7 @@ export function normaliseState(s: State): State {
         });
     s.schemaVersion = 2;
   }
-  s.schemaVersion = 4;
+  s.schemaVersion = 5;
   return s;
 }
 export function nextReference(s: State, prefix: string) {

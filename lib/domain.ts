@@ -55,6 +55,35 @@ export type Ingredient = {
   allergens: string;
   supplierId: string;
   threshold: number;
+  onlineEstimate?: {
+    packQuantity: number;
+    packCost: number;
+    sourceTitle: string;
+    sourceUrl: string;
+    researchedAt: string;
+    acceptedAt: string;
+  };
+};
+export const recipeUnits = [
+  "g",
+  "kg",
+  "ml",
+  "L",
+  "each",
+  "tsp",
+  "tbsp",
+  "cup",
+  "bunch",
+  "clove",
+  "pinch",
+] as const;
+export type RecipeUnit = (typeof recipeUnits)[number];
+export type RecipeLine = {
+  ingredientId: string;
+  quantity: number;
+  displayQuantity?: number;
+  displayUnit?: RecipeUnit;
+  conversionConfirmed?: boolean;
 };
 export type Recipe = {
   collections?: { year: number; season: (typeof seasons)[number] }[];
@@ -62,7 +91,10 @@ export type Recipe = {
   id: string;
   name: string;
   variant: string;
-  lines: { ingredientId: string; quantity: number }[];
+  createdAt?: string;
+  instructions?: string;
+  status?: "draft" | "active";
+  lines: RecipeLine[];
 };
 export type Attendee = {
   reference: string;
@@ -172,6 +204,7 @@ export type State = OperationsState & {
     fuelPrice: number;
     bufferMinutes: number;
     ownerNotes: string;
+    recipeEditorMode?: "workspace" | "wizard";
   };
   ingredients: Ingredient[];
   recipes: Recipe[];
@@ -316,7 +349,7 @@ export type State = OperationsState & {
 };
 export function emptyState(): State {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     journeys: [],
     offerings: [],
     invoices: [],
@@ -329,6 +362,7 @@ export function emptyState(): State {
       fuelPrice: 0,
       bufferMinutes: 30,
       ownerNotes: "",
+      recipeEditorMode: "workspace",
     },
     ingredients: [],
     recipes: [],
@@ -363,6 +397,27 @@ const positive = z.number().finite().positive();
 const nonnegative = z.number().finite().nonnegative();
 const cents = nonnegative.int();
 const count = positive.int().max(100000);
+const legacyIngredientCategories = [
+  "beef",
+  "chicken",
+  "rice",
+  "pasta",
+  "fish",
+  "tofu",
+] as const;
+const ingredientCategory = z
+  .union([z.enum(categories), z.enum(legacyIngredientCategories)])
+  .transform((value): (typeof categories)[number] => {
+    const mapping: Record<string, (typeof categories)[number]> = {
+      beef: "meat",
+      chicken: "poultry",
+      rice: "carbohydrates",
+      pasta: "carbohydrates",
+      fish: "fish & seafood",
+      tofu: "plant proteins",
+    };
+    return mapping[value] || (value as (typeof categories)[number]);
+  });
 const time = z.union([
   z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   z.literal(""),
@@ -409,6 +464,98 @@ export function recipeCost(s: State, r: Recipe) {
     if (!i) throw Error("Ingredient is missing");
     return sum + ((l.quantity / i.yield) * i.packCost) / i.packQuantity;
   }, 0);
+}
+export function recipeCurrentCost(s: State, r: Recipe) {
+  return r.lines.reduce((sum, line) => {
+    const ingredient = s.ingredients.find((item) => item.id === line.ingredientId);
+    if (!ingredient) throw Error("Ingredient is missing");
+    const price = ingredientPrice(s, ingredient.id);
+    return price.unitCost == null
+      ? sum
+      : sum + (line.quantity / ingredient.yield) * price.unitCost;
+  }, 0);
+}
+export function normaliseRecipeMeasurement(
+  quantity: number,
+  unit: RecipeUnit,
+  baseUnit: Ingredient["unit"],
+  culinaryConversion?: number,
+) {
+  const fixed: Partial<Record<RecipeUnit, { unit: Ingredient["unit"]; factor: number }>> = {
+    g: { unit: "g", factor: 1 },
+    kg: { unit: "g", factor: 1000 },
+    ml: { unit: "ml", factor: 1 },
+    L: { unit: "ml", factor: 1000 },
+    each: { unit: "each", factor: 1 },
+    tsp: { unit: "ml", factor: 5 },
+    tbsp: { unit: "ml", factor: 15 },
+    cup: { unit: "ml", factor: 250 },
+  };
+  const conversion = fixed[unit];
+  if (conversion) {
+    if (conversion.unit !== baseUnit) return null;
+    return quantity * conversion.factor;
+  }
+  if (!culinaryConversion || culinaryConversion <= 0) return null;
+  return quantity * culinaryConversion;
+}
+export function ingredientPrice(s: State, ingredientId: string) {
+  const ingredient = s.ingredients.find((item) => item.id === ingredientId);
+  if (!ingredient)
+    return { unitCost: null, label: "Unknown", source: "unknown" as const };
+  const purchase = s.purchases
+    .filter(
+      (item) =>
+        item.ingredientId === ingredientId &&
+        item.status === "received" &&
+        item.quantity > 0 &&
+        item.cost > 0,
+    )
+    .toSorted((a, b) => (b.at || "").localeCompare(a.at || ""))[0];
+  if (purchase)
+    return {
+      unitCost: purchase.cost / purchase.quantity,
+      label: "Last purchase",
+      source: "purchase" as const,
+    };
+  const offering = s.offerings.find(
+    (item) =>
+      item.ingredientId === ingredientId &&
+      item.preferred &&
+      item.packCost != null &&
+      item.packCost > 0 &&
+      item.packQuantity > 0,
+  );
+  if (offering)
+    return {
+      unitCost: offering.packCost! / offering.packQuantity,
+      label: "Preferred supplier",
+      source: "supplier" as const,
+    };
+  if (ingredient.onlineEstimate)
+    return {
+      unitCost:
+        ingredient.onlineEstimate.packCost /
+        ingredient.onlineEstimate.packQuantity,
+      label: "Accepted online estimate",
+      source: "online" as const,
+    };
+  if (ingredient.packQuantity > 0 && ingredient.packCost > 0)
+    return {
+      unitCost: ingredient.packCost / ingredient.packQuantity,
+      label: "Recorded price",
+      source: "catalogue" as const,
+    };
+  return { unitCost: null, label: "Price needed", source: "unknown" as const };
+}
+export function ingredientAvailable(s: State, ingredientId: string) {
+  return s.batches
+    .filter(
+      (batch) =>
+        batch.ingredientId === ingredientId &&
+        (!batch.expiry || batch.expiry >= today()),
+    )
+    .reduce((sum, batch) => sum + Math.max(0, available(s, batch.id)), 0);
 }
 export function fuelCost(miles: number, mpg: number, pricePounds: number) {
   if (mpg <= 0 || pricePounds <= 0) return null;
@@ -592,6 +739,36 @@ export function recap(s: State, customerId: string, from: string, to: string) {
       : null,
   };
 }
+const recipeImage = z.union([
+  safeURL,
+  z.string().regex(/^\/images\/[a-zA-Z0-9_./-]+$/),
+]);
+const recipeLineSchema = z.object({
+  ingredientId: short.min(1),
+  quantity: positive,
+  displayQuantity: positive.optional(),
+  displayUnit: z.enum(recipeUnits).optional(),
+  conversionConfirmed: z.boolean().optional(),
+});
+const recipeSchema = z.object({
+  id: short.optional(),
+  name: short.min(1),
+  variant: short.min(1),
+  imageUrl: recipeImage.optional(),
+  createdAt: date.optional(),
+  instructions: long.optional(),
+  status: z.enum(["draft", "active"]).optional(),
+  collections: z
+    .array(
+      z.object({
+        year: z.number().int().min(2000).max(2200),
+        season: z.enum(seasons),
+      }),
+    )
+    .max(100)
+    .optional(),
+  lines: z.array(recipeLineSchema).min(1).max(100),
+});
 export type Command = { id: string; type: string; payload: any };
 export function applyCommand(
   original: State,
@@ -615,6 +792,66 @@ export function applyCommand(
         "Only unconfirmed orders can be edited. Cancel and create a replacement for a confirmed change.",
       );
   };
+  const saveRecipe = (input: z.infer<typeof recipeSchema>) => {
+    if (
+      input.lines.some(
+        (line) => !s.ingredients.some((item) => item.id === line.ingredientId),
+      )
+    )
+      throw Error("Ingredient not found");
+    if (
+      input.lines.some(
+        (line) =>
+          line.conversionConfirmed === false ||
+          !Number.isFinite(line.quantity) ||
+          line.quantity <= 0,
+      )
+    )
+      throw Error("Review ingredient measurements before saving");
+    if (
+      input.id &&
+      (() => {
+        const old = s.recipes.find((recipe) => recipe.id === input.id);
+        return (
+          !old ||
+          old.name !== input.name ||
+          old.variant !== input.variant ||
+          JSON.stringify(old.lines) !== JSON.stringify(input.lines)
+        );
+      })() &&
+      s.orders.some(
+        (order) =>
+          ![
+            "enquiry",
+            "quote",
+            "delivered",
+            "cancelled",
+            "declined",
+          ].includes(order.status) &&
+          order.items.some((item) => item.recipeId === input.id),
+      )
+    )
+      throw Error(
+        "Create a new variant while this recipe has active confirmed orders",
+      );
+    const id = input.id || uid();
+    const recipe: Recipe = {
+      ...input,
+      id,
+      createdAt: input.createdAt || today(),
+      instructions: input.instructions || "",
+      status: input.status || "active",
+      collections: input.collections || [],
+    };
+    s.recipes = s.recipes.filter((item) => item.id !== id).concat(recipe);
+    for (const order of s.orders.filter(
+      (item) =>
+        item.items.some((line) => line.recipeId === id) &&
+        ["enquiry", "quote"].includes(item.status),
+    ))
+      order.allergyReviewed = false;
+    target = id;
+  };
   switch (command.type) {
     case "settings": {
       s.settings = z
@@ -633,6 +870,7 @@ export function applyCommand(
           fuelPrice: nonnegative.max(20),
           bufferMinutes: nonnegative.int().max(1440),
           ownerNotes: long,
+          recipeEditorMode: z.enum(["workspace", "wizard"]).optional(),
         })
         .parse(p);
       if ((s.settings.urgentDays ?? 3) > (s.settings.warningDays ?? 7))
@@ -644,7 +882,7 @@ export function applyCommand(
         .object({
           id: short.optional(),
           name: short.min(1),
-          category: z.enum(categories).optional(),
+          category: ingredientCategory.optional(),
           unit: z.enum(["g", "ml", "each"]),
           packQuantity: positive,
           packCost: cents,
@@ -717,66 +955,54 @@ export function applyCommand(
       target = id;
       break;
     }
-    case "recipe": {
-      const v = z
+    case "recipe-save": {
+      const payload = z
         .object({
-          id: short.optional(),
-          name: short.min(1),
-          variant: short.min(1),
-          imageUrl: safeURL.optional(),
-          collections: z
+          recipe: recipeSchema,
+          ingredients: z
             .array(
               z.object({
-                year: z.number().int().min(2000).max(2200),
-                season: z.enum(seasons),
+                id: short.min(1),
+                name: short.min(1),
+                category: z.enum(categories).optional(),
+                unit: z.enum(["g", "ml", "each"]),
+                packQuantity: positive,
+                packCost: cents,
+                yield: positive.max(1),
+                allergens: short,
+                supplierId: short,
+                threshold: nonnegative,
+                onlineEstimate: z
+                  .object({
+                    packQuantity: positive,
+                    packCost: cents,
+                    sourceTitle: short,
+                    sourceUrl: safeURL,
+                    researchedAt: z.string().datetime(),
+                    acceptedAt: z.string().datetime(),
+                  })
+                  .optional(),
               }),
             )
             .max(100)
-            .optional(),
-          lines: z
-            .array(z.object({ ingredientId: short.min(1), quantity: positive }))
-            .min(1)
-            .max(100),
+            .default([]),
         })
         .parse(p);
-      if (
-        v.lines.some((l) => !s.ingredients.some((i) => i.id === l.ingredientId))
-      )
-        throw Error("Ingredient not found");
-      if (
-        v.id &&
-        (() => {
-          const old = s.recipes.find((r) => r.id === v.id);
-          return (
-            !old ||
-            old.name !== v.name ||
-            old.variant !== v.variant ||
-            JSON.stringify(old.lines) !== JSON.stringify(v.lines)
-          );
-        })() &&
-        s.orders.some(
-          (o) =>
-            ![
-              "enquiry",
-              "quote",
-              "delivered",
-              "cancelled",
-              "declined",
-            ].includes(o.status) && o.items.some((i) => i.recipeId === v.id),
+      for (const ingredient of payload.ingredients) {
+        if (
+          ingredient.supplierId &&
+          !s.suppliers.some((supplier) => supplier.id === ingredient.supplierId)
         )
-      )
-        throw Error(
-          "Create a new variant while this recipe has active confirmed orders",
-        );
-      const id = v.id || uid();
-      s.recipes = s.recipes.filter((x) => x.id !== id).concat({ ...v, id });
-      for (const o of s.orders.filter(
-        (x) =>
-          x.items.some((i) => i.recipeId === id) &&
-          ["enquiry", "quote"].includes(x.status),
-      ))
-        o.allergyReviewed = false;
-      target = id;
+          throw Error("Supplier not found");
+        if (s.ingredients.some((item) => item.id === ingredient.id))
+          throw Error("A proposed ingredient id already exists");
+      }
+      s.ingredients.push(...payload.ingredients);
+      saveRecipe(payload.recipe);
+      break;
+    }
+    case "recipe": {
+      saveRecipe(recipeSchema.parse(p));
       break;
     }
     case "customer": {
@@ -828,8 +1054,15 @@ export function applyCommand(
         throw Error(
           "Combine quantities for each recipe variant into one order line",
         );
-      if (items.some((i) => !s.recipes.some((r) => r.id === i.recipeId)))
-        throw Error("Recipe not found");
+      if (
+        items.some(
+          (i) =>
+            !s.recipes.some(
+              (r) => r.id === i.recipeId && (r.status || "active") === "active",
+            ),
+        )
+      )
+        throw Error("Recipe not found or still in draft");
       if (p.enquiryId && s.orders.some((x) => x.enquiryId === p.enquiryId))
         throw Error("This enquiry already has an order");
       const cleanDetails = {

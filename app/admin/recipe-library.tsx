@@ -1,320 +1,142 @@
 "use client";
-import { useState } from "react";
-import { type Recipe, money, recipeCost, today } from "@/lib/domain";
-import { seasons, symbols } from "@/lib/operations";
+
+import { useDeferredValue, useMemo, useRef, useState, useTransition, type ComponentType, type ReactNode } from "react";
+import Image from "next/image";
+import { Beef, Check, ChefHat, CircleDollarSign, Droplets, Egg, Fish, ImagePlus, Leaf, ListChecks, Milk, PackageCheck, Pencil, Plus, Search, Sparkles, Sprout, Upload, Utensils, Wheat, X } from "lucide-react";
+import { ingredientAvailable, ingredientPrice, money, normaliseRecipeMeasurement, recipeCurrentCost, recipeUnits, today, type Ingredient, type Recipe, type RecipeLine, type RecipeUnit } from "@/lib/domain";
+import { seasons } from "@/lib/operations";
 import { useOps } from "./ops-context";
-import { Panel, GridTable } from "./admin-client";
 import { Field, Pick } from "@/components/form-controls";
 import { Button } from "@/components/ui/button";
+
+type Icon = ComponentType<{ size?: number; strokeWidth?: number }>;
+const categoryIcons: Record<string, Icon> = { meat: Beef, poultry: ChefHat, "fish & seafood": Fish, vegetables: Leaf, fruit: Sprout, carbohydrates: Wheat, bakery: Wheat, dairy: Milk, eggs: Egg, herbs: Leaf, spices: Sparkles, condiments: Droplets, "oils & fats": Droplets, liquids: Droplets, "plant proteins": Sprout, other: PackageCheck };
+const seasonCopy: Record<(typeof seasons)[number], string> = { Spring: "Fresh starts, lighter plates", Summer: "Sun-ripened flavours", Autumn: "Warm, comforting dishes", Winter: "Hearty food, colder days" };
+
 export function DishImage({ src, name }: { src?: string; name: string }) {
   const [broken, setBroken] = useState(false);
-  return src && !broken ? (
-    <img
-      src={src}
-      alt={name}
-      loading="lazy"
-      onError={() => setBroken(true)}
-      className="dish-image"
-    />
-  ) : (
-    <div className="dish-image image-placeholder">
-      <span>◌</span>Dish photo to add
-    </div>
-  );
+  return src && !broken ? <Image src={src} alt={name} width={900} height={675} unoptimized onError={() => setBroken(true)} className="dish-image" /> : <div className="dish-image image-placeholder"><ImagePlus size={28} /><span>Dish photo to add</span></div>;
 }
-export function RecipeSymbols({ recipe }: { recipe: Recipe }) {
+
+function recipeCategories(recipe: Recipe, ingredients: Ingredient[]) {
+  return [...new Set(recipe.lines.map((line) => ingredients.find((item) => item.id === line.ingredientId)?.category).filter((category): category is NonNullable<Ingredient["category"]> => !!category))];
+}
+
+function CategoryTags({ recipe, seasonOverride }: { recipe: Recipe; seasonOverride?: string }) {
   const { s } = useOps();
-  const tags = [
-    ...new Set(
-      recipe.lines
-        .map(
-          (l) => s.ingredients.find((i) => i.id === l.ingredientId)?.category,
-        )
-        .filter(Boolean),
-    ),
-  ];
-  return (
-    <div className="recipe-symbols">
-      {tags.map((c) => (
-        <span key={c} title={c}>
-          <span aria-hidden="true">{symbols[c!]}</span> {c}
-        </span>
-      ))}
+  const recipeSeason = seasonOverride || recipe.collections?.[0]?.season;
+  return <div className="recipe-meta-tags">
+    {recipeCategories(recipe, s.ingredients).slice(0, 1).map((category) => { const CategoryIcon = categoryIcons[category] || Utensils; return <span key={category}><CategoryIcon size={13} /> {category === "meat" ? "Main" : category}</span>; })}
+    {recipeSeason ? <span><Leaf size={13} /> {recipeSeason}</span> : null}
+    {(recipe.status || "active") === "draft" ? <span className="recipe-draft-tag">Draft</span> : null}
+  </div>;
+}
+
+const formatQuantity = (value: number) => new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 }).format(value);
+
+function RecipeDetail({ recipe, onEdit }: { recipe: Recipe; onEdit: (recipe: Recipe) => void }) {
+  const { s } = useOps();
+  const [servings, setServings] = useState(10);
+  const unitCost = recipeCurrentCost(s, recipe);
+  const collection = recipe.collections?.[0];
+  return <section className="recipe-detail-workspace" aria-live="polite">
+    <div className="recipe-detail-hero">
+      <div className="recipe-detail-media"><DishImage key={recipe.imageUrl} src={recipe.imageUrl} name={recipe.name} /></div>
+      <div className="recipe-detail-summary">
+        <div className="recipe-detail-actions"><Button variant="outline" size="sm" onClick={() => onEdit(structuredClone(recipe))}><Pencil size={14} /> Edit recipe</Button></div>
+        {collection ? <span className="collection-label">{collection.season} {collection.year}</span> : null}
+        <h2>{recipe.name}</h2><p className="recipe-variant">{recipe.variant}</p>
+        <div className="recipe-detail-meta"><CategoryTags recipe={recipe} /><label className="servings-control"><span>Servings</span><select value={servings} onChange={(event) => setServings(Number(event.target.value))}>{[1, 5, 10, 20, 50, 100].map((amount) => <option key={amount}>{amount}</option>)}</select></label></div>
+        <div className="recipe-cost-cards"><div><span>Cost per portion</span><strong>{money(Math.round(unitCost))}</strong></div><div><span>Total cost ({servings} portions)</span><strong>{money(Math.round(unitCost) * servings)}</strong></div></div>
+      </div>
     </div>
-  );
+    <div className="recipe-ingredient-heading"><h3>Ingredients ({recipe.lines.length})</h3><span>Calculated for {servings} servings</span></div>
+    <div className="recipe-cost-table-wrap"><table className="recipe-cost-table"><thead><tr><th>Ingredient</th><th>Quantity</th><th>Stock status</th><th>Price basis</th><th>Cost</th><th>Purchase shortfall</th></tr></thead><tbody>
+      {recipe.lines.map((line) => {
+        const ingredient = s.ingredients.find((item) => item.id === line.ingredientId); if (!ingredient) return null;
+        const required = (line.quantity / ingredient.yield) * servings;
+        const stock = ingredientAvailable(s, ingredient.id);
+        const shortfall = Math.max(0, required - stock);
+        const price = ingredientPrice(s, ingredient.id);
+        const cost = price.unitCost == null ? null : required * price.unitCost;
+        const displayUnit = line.displayUnit || ingredient.unit;
+        const displayQuantity = (line.displayQuantity ?? line.quantity) * servings;
+        return <tr key={ingredient.id}><td><span className="ingredient-name"><span className="ingredient-dot" />{ingredient.name}</span></td><td>{formatQuantity(displayQuantity)} {displayUnit}</td><td><span className={`stock-indicator ${shortfall > 0 ? "short" : "ready"}`} /><strong>{shortfall > 0 ? "Needs purchase" : "In stock"}</strong><small>{formatQuantity(stock)} {ingredient.unit} available</small></td><td><strong>{price.label}</strong><small>{price.unitCost == null ? "No usable price" : `${money(Math.round(price.unitCost * ingredient.packQuantity))} / ${ingredient.packQuantity} ${ingredient.unit}`}</small></td><td>{cost == null ? "—" : <strong>{money(Math.round(cost))}</strong>}</td><td>{shortfall > 0 ? `${formatQuantity(shortfall)} ${ingredient.unit}` : "—"}</td></tr>;
+      })}
+    </tbody></table></div>
+    <div className="recipe-instructions-card"><div><ListChecks size={18} /><h3>Cooking instructions</h3></div><Button variant="outline" size="sm" onClick={() => onEdit(structuredClone(recipe))}><Pencil size={14} /> Edit instructions</Button><RestrictedMarkdown source={recipe.instructions || "No instructions recorded yet."} /></div>
+  </section>;
 }
-export function RecipeLibrary({ onEdit }: { onEdit: (r: Recipe) => void }) {
-  const { s, href } = useOps();
-  const [year, setYear] = useState(today().slice(0, 4)),
-    [season, setSeason] = useState("all"),
-    [query, setQuery] = useState(""),
-    [page, setPage] = useState(0),
-    [selected, setSelected] = useState<string | null>(null);
-  const years = [
-    ...new Set([
-      Number(today().slice(0, 4)),
-      ...s.recipes.flatMap((r) => (r.collections || []).map((c) => c.year)),
-    ]),
-  ]
-    .sort((a, b) => b - a)
-    .map(String);
-  const filtered = s.recipes.filter(
-    (r) =>
-      (season === "all" ||
-        (r.collections || []).some(
-          (c) => c.year === Number(year) && c.season === season,
-        )) &&
-      `${r.name} ${r.variant}`.toLowerCase().includes(query.toLowerCase()),
-  );
-  const pages = Math.max(1, Math.ceil(filtered.length / 12)),
-    current = Math.min(page, pages - 1);
-  const recipe = s.recipes.find((r) => r.id === selected);
-  return (
-    <>
-      <div className="recipe-toolbar">
-        <Pick
-          label="Collection year"
-          value={year}
-          onChange={(v) => {
-            setYear(v);
-            setPage(0);
-          }}
-          options={years}
-        />
-        <Button
-          variant={season === "all" ? "default" : "outline"}
-          onClick={() => {
-            setSeason("all");
-            setPage(0);
-          }}
-        >
-          All recipes
-        </Button>
-        <Field
-          label="Search dishes and variants"
-          value={query}
-          onChange={(v) => {
-            setQuery(v);
-            setPage(0);
-          }}
-        />
-      </div>
-      <div className="season-columns">
-        {seasons.map((name) => (
-          <button
-            key={name}
-            className={`season-column ${season === name ? "selected" : ""}`}
-            aria-pressed={season === name}
-            onClick={() => {
-              setSeason(name);
-              setPage(0);
-            }}
-          >
-            <img src={`/images/${name.toLowerCase()}.svg`} alt="" />
-            <span>
-              {name}
-              <small>{year} collection</small>
-            </span>
-          </button>
-        ))}
-      </div>
-      <div className="recipe-grid">
-        {filtered.slice(current * 12, current * 12 + 12).map((r) => (
-          <button
-            className="recipe-card"
-            key={r.id}
-            onClick={() => setSelected(r.id)}
-          >
-            <DishImage key={r.imageUrl} src={r.imageUrl} name={r.name} />
-            <div>
-              <h3>{r.name}</h3>
-              <p>{r.variant}</p>
-              <RecipeSymbols recipe={r} />
-              <strong>
-                {money(Math.round(recipeCost(s, r)))} <small>/ portion</small>
-              </strong>
-            </div>
-          </button>
-        ))}
-      </div>
-      {!filtered.length && (
-        <p className="empty-state">
-          No recipes in this collection yet. Add a recipe or assign an existing
-          dish.
-        </p>
-      )}
-      <div className="recipe-pagination">
-        <Button
-          variant="outline"
-          disabled={current === 0}
-          onClick={() => setPage(current - 1)}
-        >
-          Previous
-        </Button>
-        <span>
-          {filtered.length} recipes · Page {current + 1} of {pages}
-        </span>
-        <Button
-          variant="outline"
-          disabled={current + 1 >= pages}
-          onClick={() => setPage(current + 1)}
-        >
-          Next
-        </Button>
-      </div>
-      {recipe && (
-        <Panel
-          title={`${recipe.name} · ${recipe.variant}`}
-          action={
-            <Button onClick={() => onEdit(structuredClone(recipe))}>
-              Edit recipe
-            </Button>
-          }
-        >
-          <div className="recipe-detail">
-            <DishImage
-              key={recipe.imageUrl}
-              src={recipe.imageUrl}
-              name={recipe.name}
-            />
-            <div>
-              <RecipeSymbols recipe={recipe} />
-              <h3>{money(Math.round(recipeCost(s, recipe)))} per portion</h3>
-              <p>Includes usable-yield allowances.</p>
-              <GridTable
-                heads={[
-                  "Ingredient",
-                  "Net quantity",
-                  "Yield",
-                  "Gross cost",
-                  "Supplier",
-                ]}
-                rows={recipe.lines.map((l) => {
-                  const i = s.ingredients.find((i) => i.id === l.ingredientId)!;
-                  return [
-                    <span key="cell-0">
-                      {i.category && symbols[i.category]} {i.name}
-                      <small className="subtext">
-                        Allergens: {i.allergens || "Not recorded"}
-                      </small>
-                    </span>,
-                    `${l.quantity} ${i.unit}`,
-                    `${i.yield * 100}%`,
-                    money(
-                      Math.round(
-                        ((l.quantity / i.yield) * i.packCost) / i.packQuantity,
-                      ),
-                    ),
-                    <a key="cell-4" href={href("suppliers")}>
-                      {s.suppliers.find((x) => x.id === i.supplierId)?.name ||
-                        "Assign supplier"}
-                    </a>,
-                  ];
-                })}
-              />
-            </div>
-          </div>
-        </Panel>
-      )}
-    </>
-  );
+
+function EmptyRecipeDetail({ onNew, onBrowse }: { onNew: () => void; onBrowse: () => void }) {
+  return <section className="recipe-detail-empty"><div className="empty-plate"><ChefHat size={34} /></div><h2>Select a recipe to see its costing</h2><p>Choose a recipe from the library to review ingredients, stock, costs and cooking instructions.</p><div><Button onClick={onNew}><Plus size={16} /> New recipe</Button><Button variant="outline" onClick={onBrowse}>Browse all recipes</Button></div></section>;
 }
-export function RecipeMetadata({
-  recipe,
-  onChange,
-}: {
-  recipe: Recipe;
-  onChange: (r: Recipe) => void;
-}) {
+
+export function RecipeLibrary({ onEdit, onNew }: { onEdit: (recipe: Recipe) => void; onNew: () => void }) {
+  const { s } = useOps();
   const [year, setYear] = useState(today().slice(0, 4));
+  const [season, setSeason] = useState<string>("Summer");
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+  const years = useMemo(() => [...new Set([Number(today().slice(0, 4)), ...s.recipes.flatMap((recipe) => (recipe.collections || []).map((collection) => collection.year))])].sort((a, b) => b - a).map(String), [s.recipes]);
+  const filtered = useMemo(() => s.recipes.filter((recipe) => (season === "all" || (recipe.collections || []).some((collection) => collection.year === Number(year) && collection.season === season)) && `${recipe.name} ${recipe.variant}`.toLowerCase().includes(deferredQuery.toLowerCase())), [s.recipes, season, year, deferredQuery]);
+  const selectedRecipe = s.recipes.find((recipe) => recipe.id === selected && filtered.some((item) => item.id === recipe.id));
+  const chooseSeason = (next: string) => startTransition(() => { setSeason(next); setSelected(null); });
+  function chooseRecipe(id: string) { const update = () => setSelected(id); if ("startViewTransition" in document) (document as Document & { startViewTransition: (callback: () => void) => void }).startViewTransition(update); else startTransition(update); }
+  return <div className="recipe-library-shell">
+    <div className="recipe-page-toolbar"><Pick label="Collection year" value={year} onChange={(value) => { setYear(value); setSelected(null); }} options={years} /><label className="recipe-search"><Search size={18} /><span className="sr-only">Search dishes and variants</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search dishes and variants…" /></label><Button onClick={onNew}><Plus size={17} /> New recipe</Button></div>
+    <div className="season-selectors" aria-label="Recipe seasons">{seasons.map((name) => { const count = s.recipes.filter((recipe) => (recipe.collections || []).some((collection) => collection.year === Number(year) && collection.season === name)).length; const active = season === name; return <button key={name} className={`season-selector ${active ? "selected" : ""}`} aria-pressed={active} onClick={() => chooseSeason(name)}><Image src={`/images/recipes/seasons/${name.toLowerCase()}.png`} alt="" width={700} height={230} sizes="(max-width: 820px) 50vw, 25vw" loading="eager" />{active ? <span className="season-check"><Check size={18} /></span> : null}<span className="season-selector-copy"><strong>{name}</strong><small>{seasonCopy[name]}</small><em>{count} {count === 1 ? "recipe" : "recipes"}</em></span></button>; })}</div>
+    <div className="recipe-master-detail"><aside className="recipe-rail"><header><div><h2>{season === "all" ? "All" : season} recipes</h2><span>{filtered.length} recipes</span></div></header><div className="recipe-rail-list">{filtered.map((recipe) => <button key={recipe.id} onClick={() => chooseRecipe(recipe.id)} className={`recipe-rail-card ${selected === recipe.id ? "selected" : ""}`} aria-pressed={selected === recipe.id}><DishImage src={recipe.imageUrl} name={recipe.name} /><span className="recipe-rail-copy"><strong>{recipe.name}</strong><small>{recipe.variant}</small><CategoryTags recipe={recipe} seasonOverride={season === "all" ? undefined : season} /></span><span className="recipe-rail-price"><strong>{money(Math.round(recipeCurrentCost(s, recipe)))}</strong><small>per portion</small></span></button>)}{!filtered.length ? <div className="recipe-rail-empty"><p>No recipes match this collection.</p><Button size="sm" onClick={onNew}>Add recipe</Button></div> : null}</div></aside>{selectedRecipe ? <RecipeDetail key={selectedRecipe.id} recipe={selectedRecipe} onEdit={onEdit} /> : <EmptyRecipeDetail onNew={onNew} onBrowse={() => chooseSeason("all")} />}</div>
+  </div>;
+}
+
+function RestrictedMarkdown({ source }: { source: string }) {
+  const renderInline = (text: string): ReactNode[] => {
+    const tokens = /(\*\*[^*]+\*\*|__[^_]+__|==[^=]+==|\*[^*]+\*|\{(?:red|navy|gold|green)\}[^{}]+\{\/\}|\{(?:small|large)\}[^{}]+\{\/\})/g;
+    return text.split(tokens).filter(Boolean).map((part, index) => { if (part.startsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>; if (part.startsWith("__")) return <u key={index}>{part.slice(2, -2)}</u>; if (part.startsWith("==")) return <mark key={index}>{part.slice(2, -2)}</mark>; if (part.startsWith("*")) return <em key={index}>{part.slice(1, -1)}</em>; const style = part.match(/^\{(red|navy|gold|green|small|large)\}(.+)\{\/\}$/); return style ? <span key={index} className={`markdown-${style[1]}`}>{style[2]}</span> : part; });
+  };
+  const rows = source.split("\n").filter((line) => line.trim());
+  return <div className="restricted-markdown">{rows.map((line, index) => { if (line.startsWith("### ")) return <h5 key={index}>{renderInline(line.slice(4))}</h5>; if (line.startsWith("## ")) return <h4 key={index}>{renderInline(line.slice(3))}</h4>; if (line.startsWith("# ")) return <h3 key={index}>{renderInline(line.slice(2))}</h3>; const ordered = line.match(/^\d+\.\s+(.+)/); if (ordered) return <p className="markdown-step" key={index}><span>{line.split(".")[0]}.</span>{renderInline(ordered[1])}</p>; return <p key={index}>{renderInline(line.replace(/^[-*]\s+/, ""))}</p>; })}</div>;
+}
+
+type DraftIngredient = Ingredient & { onlineEstimate?: Ingredient["onlineEstimate"] };
+type AiResult = { draft: { variant: string; ingredients: { name: string; ingredientId: string | null; quantity: number; unit: RecipeUnit; category: NonNullable<Ingredient["category"]>; baseUnit: Ingredient["unit"]; allergens: string; conversionConfirmed: boolean; confidence: string; note: string }[]; instructions: string; uncertaintyFlags: string[] }; estimates: { name: string; packQuantity: number; packCost: number; sourceUrl: string; sourceTitle: string }[]; sources: { title: string; url: string }[]; generatedAt: string };
+const createRecipe = (): Recipe => ({ id: "", name: "", variant: "", createdAt: today(), instructions: "", status: "draft", collections: [{ year: Number(today().slice(0, 4)), season: "Summer" }], lines: [] });
+
+export function RecipeEditor({ initial, onClose }: { initial?: Recipe | null; onClose: () => void }) {
+  const { s, api, run, busy } = useOps();
+  const [recipe, setRecipe] = useState<Recipe>(() => structuredClone(initial || createRecipe()));
+  const [newIngredients, setNewIngredients] = useState<DraftIngredient[]>([]);
+  const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
-  async function uploadImage(file?: File) {
-    if (!file) return;
-    setUploading(true);
-    setUploadError("");
-    try {
-      const body = new FormData();
-      body.set("file", file);
-      const response = await fetch("/api/admin/uploads", {
-        method: "POST",
-        body,
-      });
-      const result = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok) throw Error(result.error || "Upload failed");
-      if (!result.url) throw Error("Upload did not return an image URL");
-      onChange({ ...recipe, imageUrl: result.url });
-    } catch (error) {
-      setUploadError((error as Error).message);
-    } finally {
-      setUploading(false);
-    }
-  }
-  return (
-    <div className="wide">
-      <label>
-        Dish image (JPG, PNG or WebP; max 4 MB)
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          disabled={uploading}
-          onChange={(event) => void uploadImage(event.target.files?.[0])}
-        />
-      </label>
-      {uploading && <p>Uploading image…</p>}
-      {uploadError && <p role="alert">{uploadError}</p>}
-      <Field
-        label="Finished-dish image URL (or paste an HTTPS URL)"
-        value={recipe.imageUrl || ""}
-        onChange={(imageUrl) => onChange({ ...recipe, imageUrl })}
-      />
-      {recipe.imageUrl && (
-        <div className="image-preview">
-          <DishImage
-            key={recipe.imageUrl}
-            src={recipe.imageUrl}
-            name={recipe.name}
-          />
-        </div>
-      )}
-      <Field
-        label="Assign to collection year"
-        type="number"
-        value={year}
-        onChange={setYear}
-      />
-      <div className="season-checks">
-        {seasons.map((season) => (
-          <label key={season}>
-            <input
-              type="checkbox"
-              checked={(recipe.collections || []).some(
-                (c) => c.year === Number(year) && c.season === season,
-              )}
-              onChange={(e) =>
-                onChange({
-                  ...recipe,
-                  collections: e.target.checked
-                    ? [
-                        ...(recipe.collections || []),
-                        { year: Number(year), season },
-                      ]
-                    : (recipe.collections || []).filter(
-                        (c) => c.year !== Number(year) || c.season !== season,
-                      ),
-                })
-              }
-            />
-            {season}
-          </label>
-        ))}
-      </div>
-      <p className="panel-note">
-        Collections:{" "}
-        {(recipe.collections || [])
-          .map((c) => `${c.season} ${c.year}`)
-          .join(", ") || "Unassigned — available in All recipes"}
-      </p>
+  const [aiResult, setAiResult] = useState<AiResult | null>(null);
+  const [acceptedEstimates, setAcceptedEstimates] = useState<Set<string>>(new Set());
+  const [step, setStep] = useState(0);
+  const instructionRef = useRef<HTMLTextAreaElement>(null);
+  const wizard = s.settings.recipeEditorMode === "wizard";
+  const allIngredients = [...s.ingredients, ...newIngredients];
+  const validLines = recipe.lines.filter((line) => line.ingredientId && line.quantity > 0 && line.conversionConfirmed !== false);
+  const incomplete = recipe.lines.some((line) => line.conversionConfirmed === false);
+  function updateLine(index: number, patch: Partial<RecipeLine>) { setRecipe((current) => ({ ...current, lines: current.lines.map((line, lineIndex) => lineIndex === index ? { ...line, ...patch } : line) })); }
+  function setDisplayMeasurement(index: number, displayQuantity: number, displayUnit: RecipeUnit) { const line = recipe.lines[index]; const ingredient = allIngredients.find((item) => item.id === line.ingredientId); if (!ingredient) return updateLine(index, { displayQuantity, displayUnit, quantity: displayQuantity, conversionConfirmed: false }); const normalised = normaliseRecipeMeasurement(displayQuantity, displayUnit, ingredient.unit); updateLine(index, { displayQuantity, displayUnit, quantity: normalised ?? displayQuantity, conversionConfirmed: normalised != null }); }
+  function wrapSelection(before: string, after = before) { const field = instructionRef.current; if (!field) return; const start = field.selectionStart; const end = field.selectionEnd; const next = `${recipe.instructions?.slice(0, start) || ""}${before}${recipe.instructions?.slice(start, end) || "text"}${after}${recipe.instructions?.slice(end) || ""}`; setRecipe({ ...recipe, instructions: next }); requestAnimationFrame(() => { field.focus(); field.setSelectionRange(start + before.length, end + before.length); }); }
+  async function uploadImage(file?: File) { if (!file) return; setUploading(true); setError(""); try { const body = new FormData(); body.set("file", file); const response = await fetch("/api/admin/uploads", { method: "POST", body }); const result = await response.json() as { url?: string; error?: string }; if (!response.ok || !result.url) throw Error(result.error || "Upload failed"); setRecipe((current) => ({ ...current, imageUrl: result.url })); } catch (uploadError) { setError((uploadError as Error).message); } finally { setUploading(false); } }
+  async function generateDraft() { setError(""); setAiResult(null); try { setAiResult(await api("recipe-assistant", { dishName: recipe.name, variant: recipe.variant })); } catch (aiError) { setError((aiError as Error).message); } }
+  function applyAiDraft() { if (!aiResult) return; const added: DraftIngredient[] = []; const lines = aiResult.draft.ingredients.map((suggestion) => { let ingredientId = suggestion.ingredientId; if (!ingredientId) { ingredientId = `recipe-${crypto.randomUUID()}`; const estimate = aiResult.estimates.find((item) => item.name.toLowerCase() === suggestion.name.toLowerCase()); const accepted = estimate && acceptedEstimates.has(estimate.name); added.push({ id: ingredientId, name: suggestion.name, category: suggestion.category, unit: suggestion.baseUnit, packQuantity: accepted ? estimate.packQuantity : 1, packCost: accepted ? estimate.packCost : 0, yield: 1, allergens: suggestion.allergens, supplierId: "", threshold: 0, onlineEstimate: accepted ? { ...estimate, researchedAt: aiResult.generatedAt, acceptedAt: new Date().toISOString() } : undefined }); } const ingredient = s.ingredients.find((item) => item.id === ingredientId) || added.find((item) => item.id === ingredientId)!; const normalised = normaliseRecipeMeasurement(suggestion.quantity, suggestion.unit, ingredient.unit); return { ingredientId, displayQuantity: suggestion.quantity, displayUnit: suggestion.unit, quantity: normalised ?? suggestion.quantity, conversionConfirmed: suggestion.conversionConfirmed && normalised != null }; }); setNewIngredients(added); setRecipe((current) => ({ ...current, variant: current.variant || aiResult.draft.variant, instructions: aiResult.draft.instructions, lines })); setAiResult(null); }
+  async function save(status: "draft" | "active") { setError(""); try { if (!recipe.name.trim() || !recipe.variant.trim()) throw Error("Add a dish name and variant"); if (!validLines.length) throw Error("Add at least one complete ingredient"); if (incomplete) throw Error("Review culinary measurement conversions before saving"); await run("recipe-save", { recipe: { ...recipe, id: recipe.id || undefined, status, lines: validLines }, ingredients: newIngredients }); onClose(); } catch (saveError) { setError((saveError as Error).message); } }
+  const showDetails = !wizard || step === 0, showIngredients = !wizard || step === 1, showInstructions = !wizard || step === 2;
+  return <div className="recipe-editor-workspace">
+    <header className="recipe-editor-header"><div><span>{initial ? "Edit recipe" : "Create recipe"}</span><h2>{recipe.name || "New recipe"}</h2><p>Build the dish, confirm its costing and keep every instruction together.</p></div><button type="button" className="recipe-editor-close" onClick={onClose} aria-label="Close recipe editor"><X size={20} /></button></header>
+    {wizard ? <nav className="recipe-editor-steps" aria-label="Recipe editor steps">{["Details", "Ingredients", "Instructions"].map((label, index) => <button type="button" key={label} className={step === index ? "selected" : ""} onClick={() => setStep(index)}><span>{index + 1}</span>{label}</button>)}</nav> : null}
+    <div className="recipe-editor-body">
+      {showDetails ? <section className="recipe-editor-section recipe-editor-details"><div className="editor-section-title"><div><ChefHat size={18} /><h3>Recipe details</h3></div><Button type="button" variant="outline" size="sm" disabled={!recipe.name || busy} onClick={() => void generateDraft()}><Sparkles size={15} /> Fill with Gemini</Button></div><div className="recipe-editor-detail-grid"><label className="recipe-image-drop" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void uploadImage(event.dataTransfer.files[0]); }}>{recipe.imageUrl ? <DishImage src={recipe.imageUrl} name={recipe.name || "Recipe preview"} /> : <><Upload size={26} /><strong>Upload dish image</strong><span>Drop JPG, PNG or WebP here</span></>}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={(event) => void uploadImage(event.target.files?.[0])} /></label><div className="recipe-editor-fields"><Field label="Dish name" required value={recipe.name} onChange={(name) => setRecipe({ ...recipe, name })} /><Field label="Variant" required value={recipe.variant} onChange={(variant) => setRecipe({ ...recipe, variant })} /><Field label="Entry date" type="date" value={recipe.createdAt || today()} onChange={(createdAt) => setRecipe({ ...recipe, createdAt })} /><div className="editor-season-picks"><span>Season collection</span>{seasons.map((season) => { const active = recipe.collections?.some((collection) => collection.season === season); return <button type="button" key={season} className={active ? "selected" : ""} onClick={() => setRecipe({ ...recipe, collections: active ? (recipe.collections || []).filter((collection) => collection.season !== season) : [...(recipe.collections || []), { year: Number(today().slice(0, 4)), season }] })}>{active ? <Check size={13} /> : <Leaf size={13} />}{season}</button>; })}</div></div></div></section> : null}
+      {showIngredients ? <section className="recipe-editor-section"><div className="editor-section-title"><div><CircleDollarSign size={18} /><h3>Ingredients & costing</h3></div><span className={incomplete ? "cost-incomplete" : "cost-ready"}>{incomplete ? "Conversion review needed" : `${money(Math.round(recipeCurrentCost({ ...s, ingredients: allIngredients }, { ...recipe, lines: validLines })))} / portion`}</span></div><div className="editor-ingredient-list">{recipe.lines.map((line, index) => { const ingredient = allIngredients.find((item) => item.id === line.ingredientId); return <div className={`editor-ingredient-row ${line.conversionConfirmed === false ? "needs-review" : ""}`} key={`${line.ingredientId}-${index}`}><Pick label="Ingredient" value={line.ingredientId} options={allIngredients.map((item) => ({ value: item.id, label: `${item.name} · ${item.category || "other"}` }))} onChange={(ingredientId) => { const next = allIngredients.find((item) => item.id === ingredientId)!; updateLine(index, { ingredientId, displayUnit: next.unit, displayQuantity: 1, quantity: 1, conversionConfirmed: true }); }} /><Field label="Amount / portion" type="number" step="any" value={line.displayQuantity ?? line.quantity} onChange={(value) => setDisplayMeasurement(index, Number(value), line.displayUnit || ingredient?.unit || "g")} /><Pick label="Measure" value={line.displayUnit || ingredient?.unit || "g"} options={[...recipeUnits]} onChange={(unit) => setDisplayMeasurement(index, line.displayQuantity ?? line.quantity, unit as RecipeUnit)} /><div className="ingredient-row-status"><span>{ingredient?.category || "Select ingredient"}</span>{line.conversionConfirmed === false && ingredient ? <label className="conversion-review">Base {ingredient.unit}<input aria-label={`Base ${ingredient.unit} per portion`} type="number" min="0.001" step="any" value={line.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) })} /><button type="button" onClick={() => updateLine(index, { conversionConfirmed: line.quantity > 0 })}>Confirm</button></label> : <small>{ingredient ? `${formatQuantity(line.quantity)} ${ingredient.unit} costed` : "Not costed"}</small>}</div><Button type="button" variant="ghost" size="sm" onClick={() => setRecipe({ ...recipe, lines: recipe.lines.filter((_, lineIndex) => lineIndex !== index) })}><X size={16} /><span className="sr-only">Remove ingredient</span></Button></div>; })}</div><Button type="button" variant="outline" onClick={() => setRecipe({ ...recipe, lines: [...recipe.lines, { ingredientId: "", quantity: 1, displayQuantity: 1, displayUnit: "g", conversionConfirmed: true }] })}><Plus size={15} /> Add ingredient</Button></section> : null}
+      {showInstructions ? <section className="recipe-editor-section"><div className="editor-section-title"><div><ListChecks size={18} /><h3>Cooking instructions</h3></div><Button type="button" variant="outline" size="sm" disabled={!recipe.name || busy} onClick={() => void generateDraft()}><Sparkles size={15} /> AI autofill</Button></div><div className="markdown-toolbar" role="toolbar" aria-label="Instruction formatting"><button type="button" onClick={() => wrapSelection("## ", "")}>H2</button><button type="button" onClick={() => wrapSelection("**")}>B</button><button type="button" onClick={() => wrapSelection("*")}><em>I</em></button><button type="button" onClick={() => wrapSelection("__")}><u>U</u></button><button type="button" onClick={() => wrapSelection("==")}>Highlight</button><select aria-label="Text size" onChange={(event) => { if (event.target.value) wrapSelection(`{${event.target.value}}`, "{/}"); event.target.value = ""; }} defaultValue=""><option value="" disabled>Text size</option><option value="small">Small</option><option value="large">Large</option></select><select aria-label="Text colour" onChange={(event) => { if (event.target.value) wrapSelection(`{${event.target.value}}`, "{/}"); event.target.value = ""; }} defaultValue=""><option value="" disabled>Colour</option><option value="navy">Navy</option><option value="gold">Gold</option><option value="green">Green</option><option value="red">Red</option></select></div><div className="instruction-editor-grid"><textarea ref={instructionRef} value={recipe.instructions || ""} onChange={(event) => setRecipe({ ...recipe, instructions: event.target.value })} placeholder="Add method, temperatures, timings and plating notes…" /><div className="instruction-preview"><span>Preview</span><RestrictedMarkdown source={recipe.instructions || "Your formatted instructions will appear here."} /></div></div></section> : null}
+      {aiResult ? <section className="ai-recipe-review" aria-live="polite"><div className="ai-review-heading"><div><Sparkles size={18} /><div><h3>Review Gemini draft</h3><p>Nothing changes until you apply this draft and save the recipe.</p></div></div><button type="button" onClick={() => setAiResult(null)}><X size={18} /></button></div><div className="ai-review-grid"><div><h4>Matched & needed ingredients</h4>{aiResult.draft.ingredients.map((item) => <div className="ai-review-line" key={item.name}><span><strong>{item.name}</strong><small>{item.quantity} {item.unit} · {item.ingredientId ? "Matched to catalogue" : "New ingredient"}</small></span><em>{item.confidence}</em></div>)}</div><div><h4>Review flags</h4>{aiResult.draft.uncertaintyFlags.length ? <ul>{aiResult.draft.uncertaintyFlags.map((flag) => <li key={flag}>{flag}</li>)}</ul> : <p>No uncertainty flags returned.</p>}</div></div>{aiResult.estimates.length ? <div className="ai-price-estimates"><h4>Provisional online prices</h4><p>Select estimates to explicitly accept them into this draft.</p>{aiResult.estimates.map((estimate) => <label key={estimate.name}><input type="checkbox" checked={acceptedEstimates.has(estimate.name)} onChange={(event) => setAcceptedEstimates((current) => { const next = new Set(current); if (event.target.checked) next.add(estimate.name); else next.delete(estimate.name); return next; })} /><span><strong>{estimate.name}</strong><small>{money(estimate.packCost)} / {estimate.packQuantity} base units · <a href={estimate.sourceUrl} target="_blank" rel="noreferrer">{estimate.sourceTitle} ↗</a></small></span></label>)}</div> : null}<div className="ai-review-actions"><Button type="button" variant="outline" onClick={() => setAiResult(null)}>Discard</Button><Button type="button" onClick={applyAiDraft}><Check size={15} /> Apply reviewed draft</Button></div></section> : null}
+      {error ? <p role="alert" className="error-message recipe-editor-error">{error}</p> : null}
     </div>
-  );
+    <footer className="recipe-editor-footer"><span>{validLines.length} ingredients · {recipe.createdAt || today()}</span><div>{wizard && step > 0 ? <Button type="button" variant="outline" onClick={() => setStep(step - 1)}>Back</Button> : null}{wizard && step < 2 ? <Button type="button" onClick={() => setStep(step + 1)}>Continue</Button> : <><Button type="button" variant="outline" disabled={busy} onClick={() => void save("draft")}>Save draft</Button><Button type="button" disabled={busy || incomplete} onClick={() => void save("active")}>{busy ? "Saving…" : "Save & activate"}</Button></>}</div></footer>
+  </div>;
 }

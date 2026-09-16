@@ -6,7 +6,7 @@ import {
   config,
   database,
   loadState,
-  commitState,
+  commitStateAndDelivery,
 } from "@/lib/server";
 import { draftCurrent } from "@/lib/operations";
 import { EmailDeliveryUncertain, sendEmail } from "@/lib/email";
@@ -79,18 +79,26 @@ export async function POST(req: Request) {
         subject: draft.subject,
         text: draft.body,
       });
-      await db
-        .prepare(
-          "UPDATE email_deliveries SET status='sent',provider_id=?,updated_at=? WHERE id=?",
-        )
-        .bind(result.id, at, draftId)
-        .run();
       draft.sentAt = at;
+      let nextRevision: number;
+      try {
+        nextRevision = await commitStateAndDelivery(
+          "live",
+          state,
+          revision,
+          { id: draftId, status: "sent", providerId: result.id },
+          draftId,
+        );
+      } catch {
+        throw new EmailDeliveryUncertain(
+          "Provider accepted the email but its database commit was interrupted",
+        );
+      }
       return Response.json({
         status: "sent",
         id: result.id,
         state,
-        revision: await commitState("live", state, revision, draftId),
+        revision: nextRevision,
       });
     } catch (error) {
       if (!(error instanceof EmailDeliveryUncertain)) {

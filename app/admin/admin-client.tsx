@@ -63,21 +63,22 @@ import {
   today,
   type State,
   type Order,
+  type Recipe,
 } from "@/lib/domain";
 import OrderPanel from "./order-panel";
 import BusinessHub from "./business-hub";
 import WasteReports from "./waste-reports";
 import CRM from "./crm";
-import { RecipeLibrary, RecipeMetadata } from "./recipe-library";
+import { RecipeEditor, RecipeLibrary } from "./recipe-library";
 import {
   ExpiryBadge,
   StockSummary,
   SupplierInsights,
   UpcomingVenueResearch,
 } from "./operations-panels";
-import { categories, draftCurrent } from "@/lib/operations";
+import { draftCurrent } from "@/lib/operations";
 import { Context, useOps, type Ops, type Edit, type Spec } from "./ops-context";
-import { useReportFilters } from "./report-controls";
+import { updateQuery, useReportFilters } from "./report-controls";
 const navigation = [
   ["", "Overview", LayoutDashboard],
   ["orders", "Enquiries & orders", ClipboardList],
@@ -102,14 +103,6 @@ const businessNavigation = [
   ["purchasing", "Purchasing"],
   ["invoices", "Invoices"],
   ["costs", "Costs & travel"],
-] as const;
-const businessDetailNavigation = [
-  ["customers", "Customers"],
-  ["suppliers", "Suppliers"],
-  ["ingredients", "Ingredients"],
-  ["locations", "Locations"],
-  ["industries", "Industries"],
-  ["events", "Events"],
 ] as const;
 const crmNavigation = [
   ["", "Clients"],
@@ -341,7 +334,6 @@ export default function Admin({
   const page = section[0] || "";
   const { params: navigationParams } = useReportFilters();
   const selectedTab = navigationParams.get("tab") || "overview";
-  const selectedBusinessDetail = navigationParams.get("detail") || "customers";
   const href = (p: string) => `/admin${p ? "/" + p : ""}?mode=${mode}`;
   const nestedHref = (p: string, values: Record<string, string>) => {
     const query = new URLSearchParams({ mode, ...values });
@@ -532,34 +524,6 @@ export default function Admin({
                             >
                               <a href={nestedHref(path, { tab })}>{subLabel}</a>
                             </SidebarMenuSubButton>
-                            {tab === "overview" && selectedTab === "overview" && (
-                              <SidebarMenuSub aria-label="Business overview reports">
-                                {businessDetailNavigation.map(
-                                  ([detail, detailLabel]) => (
-                                    <SidebarMenuSubItem key={detail}>
-                                      <SidebarMenuSubButton
-                                        asChild
-                                        size="sm"
-                                        isActive={
-                                          page === path &&
-                                          selectedTab === tab &&
-                                          selectedBusinessDetail === detail
-                                        }
-                                      >
-                                        <a
-                                          href={nestedHref(path, {
-                                            tab,
-                                            detail,
-                                          })}
-                                        >
-                                          {detailLabel}
-                                        </a>
-                                      </SidebarMenuSubButton>
-                                    </SidebarMenuSubItem>
-                                  ),
-                                )}
-                              </SidebarMenuSub>
-                            )}
                           </SidebarMenuSubItem>
                         ))}
                       </SidebarMenuSub>
@@ -1012,240 +976,24 @@ function Orders() {
   );
 }
 function Recipes() {
-  const { s, open, run, busy } = useOps();
-  const [editing, setEditing] = useState<any>(null),
-    [error, setError] = useState("");
-  const ingredients = s.ingredients.map((i) => ({
-    value: i.id,
-    label: `${i.name} (${i.unit})`,
-  }));
+  const [editing, setEditing] = useState<Recipe | null | undefined>(undefined);
+  const editorOpen = editing !== undefined;
   return (
     <>
-      <Panel
-        title="Recipes & variants"
-        action={
-          <Add
-            onClick={() => {
-              setEditing({
-                name: "",
-                variant: "",
-                lines: [{ ingredientId: "", quantity: 0 }],
-              });
-              setError("");
-            }}
-          >
-            New recipe
-          </Add>
-        }
-      >
-        <RecipeLibrary
-          onEdit={(r) => {
-            setEditing(r);
-            setError("");
-          }}
-        />
-        <p className="panel-note">
-          Costs include usable-yield allowances. Create a distinct variant for
-          substitutions; confirm allergen information before use.
-        </p>
-      </Panel>
-      <Panel
-        title="Ingredient prices"
-        action={
-          <Add onClick={() => open(ingredientEditor(s))}>Add ingredient</Add>
-        }
-      >
-        <GridTable
-          heads={[
-            "Ingredient",
-            "Pack",
-            "Pack cost",
-            "Usable yield",
-            "Allergens",
-            "",
-          ]}
-          rows={s.ingredients.map((i) => [
-            i.name,
-            `${i.packQuantity} ${i.unit}`,
-            money(i.packCost),
-            `${i.yield * 100}%`,
-            i.allergens || "Not recorded",
-            <Button
-              key="cell-5"
-              variant="ghost"
-              size="sm"
-              onClick={() => open({ ...ingredientEditor(s), values: i })}
-            >
-              Edit
-            </Button>,
-          ])}
-        />
-      </Panel>
+      <RecipeLibrary onNew={() => setEditing(null)} onEdit={setEditing} />
       <Dialog
-        open={!!editing}
+        open={editorOpen}
         onOpenChange={(o) => {
-          if (!o) setEditing(null);
+          if (!o) setEditing(undefined);
         }}
       >
-        <DialogContent className="editor-dialog">
-          <DialogHeader>
-            <DialogTitle>Recipe & variant</DialogTitle>
-            <DialogDescription>
-              Quantities are per portion, before the usable-yield allowance.
-            </DialogDescription>
-          </DialogHeader>
-          {editing && (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  await run("recipe", editing);
-                  setEditing(null);
-                } catch (e) {
-                  setError((e as Error).message);
-                }
-              }}
-            >
-              <div className="form-grid">
-                <Field
-                  label="Dish name"
-                  required
-                  value={editing.name}
-                  onChange={(name) => setEditing({ ...editing, name })}
-                />
-                <Field
-                  label="Variant"
-                  required
-                  value={editing.variant}
-                  onChange={(variant) => setEditing({ ...editing, variant })}
-                />
-                <RecipeMetadata recipe={editing} onChange={setEditing} />
-                {editing.lines.map((line: any, i: number) => (
-                  <div className="attendee-row wide" key={i}>
-                    <Pick
-                      label="Ingredient"
-                      value={line.ingredientId}
-                      options={ingredients}
-                      onChange={(v) =>
-                        setEditing({
-                          ...editing,
-                          lines: editing.lines.map((x: any, j: number) =>
-                            i === j ? { ...x, ingredientId: v } : x,
-                          ),
-                        })
-                      }
-                    />
-                    <Field
-                      label="Quantity per portion"
-                      type="number"
-                      step="any"
-                      value={line.quantity}
-                      onChange={(v) =>
-                        setEditing({
-                          ...editing,
-                          lines: editing.lines.map((x: any, j: number) =>
-                            i === j ? { ...x, quantity: Number(v) } : x,
-                          ),
-                        })
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          ...editing,
-                          lines: editing.lines.filter(
-                            (_: any, j: number) => i !== j,
-                          ),
-                        })
-                      }
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-5"
-                onClick={() =>
-                  setEditing({
-                    ...editing,
-                    lines: [
-                      ...editing.lines,
-                      { ingredientId: "", quantity: 0 },
-                    ],
-                  })
-                }
-              >
-                Add ingredient
-              </Button>
-              {error && (
-                <p role="alert" className="error-message">
-                  {error}
-                </p>
-              )}
-              <div className="form-actions">
-                <span />
-                <Button disabled={busy}>Save recipe</Button>
-              </div>
-            </form>
-          )}
+        <DialogContent className="recipe-editor-dialog" showCloseButton={false}>
+          <DialogTitle className="sr-only">{editing ? "Edit recipe" : "Create recipe"}</DialogTitle>
+          {editorOpen ? <RecipeEditor initial={editing} onClose={() => setEditing(undefined)} /> : null}
         </DialogContent>
       </Dialog>
     </>
   );
-}
-function ingredientEditor(s: State): Edit {
-  return {
-    title: "Ingredient and supplier price",
-    action: "ingredient",
-    fields: [
-      { key: "name", label: "Ingredient", required: true },
-      { key: "unit", label: "Base unit", options: ["g", "ml", "each"] },
-      {
-        key: "category",
-        label: "Ingredient symbol",
-        options: [
-          { value: "", label: "No symbol" },
-          ...categories.map((c) => ({ value: c, label: c })),
-        ],
-      },
-      {
-        key: "packQuantity",
-        label: "Quantity in pack (base units)",
-        type: "number",
-        required: true,
-      },
-      {
-        key: "packCost",
-        label: "Pack cost (£)",
-        type: "money",
-        required: true,
-      },
-      {
-        key: "yield",
-        label: "Usable yield (0.85 = 85%)",
-        type: "number",
-        required: true,
-      },
-      { key: "allergens", label: "Declared allergens / verified none" },
-      {
-        key: "supplierId",
-        label: "Supplier",
-        options: s.suppliers.map((x) => ({ value: x.id, label: x.name })),
-      },
-      {
-        key: "threshold",
-        label: "Restock threshold (base units)",
-        type: "number",
-      },
-    ],
-    values: { unit: "g", yield: 1 },
-    transform: (v) => ({ ...v, category: v.category || undefined }),
-  };
 }
 export function stockEditor(
   s: State,
@@ -1471,6 +1219,7 @@ function Suppliers() {
   const tab = supplierNavigation.some(([value]) => value === requestedTab)
     ? requestedTab
     : "overview";
+  const supplierId = params.get("supplier") || undefined;
   const addSupplier = () =>
     open({
       title: "Add supplier",
@@ -1490,6 +1239,8 @@ function Suppliers() {
         <SupplierInsights
           onAddSupplier={addSupplier}
           onEditSupplier={editSupplier}
+          selectedSupplierId={supplierId}
+          onSelectSupplier={(id) => updateQuery({ supplier: id })}
         />
       )}
       {tab === "options" && (
@@ -1852,6 +1603,14 @@ function SettingsPage() {
                     label: "Kitchen notes",
                     type: "textarea",
                   },
+                  {
+                    key: "recipeEditorMode",
+                    label: "Recipe editor layout",
+                    options: [
+                      { value: "workspace", label: "Single workspace" },
+                      { value: "wizard", label: "Three-step wizard" },
+                    ],
+                  },
                 ],
               })
             }
@@ -1890,6 +1649,14 @@ function SettingsPage() {
           <div>
             <dt>Loading buffer</dt>
             <dd>{s.settings.bufferMinutes} minutes</dd>
+          </div>
+          <div>
+            <dt>Recipe editor</dt>
+            <dd>
+              {s.settings.recipeEditorMode === "wizard"
+                ? "Three-step wizard"
+                : "Single workspace"}
+            </dd>
           </div>
         </dl>
         <p className="panel-note">

@@ -4,11 +4,13 @@ export async function googleJSON(
   body: any,
   extra: Record<string, string> = {},
 ) {
+  const apiKey = config().GOOGLE_MAPS_API_KEY;
+  if (!apiKey) throw Error("Google Maps setup required");
   const r = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Goog-Api-Key": config().GOOGLE_MAPS_API_KEY,
+      "X-Goog-Api-Key": apiKey,
       ...extra,
     },
     body: JSON.stringify(body),

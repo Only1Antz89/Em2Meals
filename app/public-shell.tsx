@@ -16,7 +16,6 @@ export function Brand({ inverse = false }: { inverse?: boolean }) {
 
 export function Header({
   variant = "light",
-  active,
 }: {
   variant?: "light" | "overlay";
   active?: "private" | "corporate";
@@ -24,25 +23,6 @@ export function Header({
   return (
     <header className={`site-header site-header--${variant}`}>
       <Brand inverse={variant === "overlay"} />
-      <nav aria-label="Main navigation">
-        <Link
-          href="/private-chef"
-          aria-current={active === "private" ? "page" : undefined}
-        >
-          Private dining
-        </Link>
-        <Link
-          href="/corporate"
-          aria-current={active === "corporate" ? "page" : undefined}
-        >
-          Corporate catering
-        </Link>
-      </nav>
-      <Link className="header-cta" href="/enquire">
-        <span className="header-cta-long">Make an enquiry</span>
-        <span className="header-cta-short">Enquire</span>
-        <ArrowUpRight aria-hidden="true" size={17} />
-      </Link>
     </header>
   );
 }
@@ -51,11 +31,9 @@ export function Footer() {
   return (
     <footer className="site-footer" id="footer">
       <div className="footer-lead">
-        <div>
-          <Brand inverse />
-          <p>Black-owned. London-made.</p>
-        </div>
+        <Brand inverse />
         <h2>Food for the moments that bring people together.</h2>
+        <p>Private dining · Corporate catering · London</p>
       </div>
       <div className="footer-directory">
         <div>

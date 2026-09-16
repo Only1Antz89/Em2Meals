@@ -7,9 +7,6 @@ export const metadata: Metadata = {
   title: "EM² Meals | Private dining & corporate catering in London",
   description:
     "Private dining for meaningful occasions and thoughtful corporate catering for productive days in London.",
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

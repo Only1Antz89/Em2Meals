@@ -5,7 +5,7 @@ export default function Page() {
       <Header />
       <main className="policy">
         <span className="eyebrow">YOUR INFORMATION</span>
-        <h1>Privacy at EM² Meals</h1>
+        <h1>Privacy at Fork Goodness Baked</h1>
         <p>
           This private pilot collects enquiry contact details, event information
           and any dietary requirements you choose to provide, so the owner can

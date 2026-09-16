@@ -568,6 +568,7 @@ test("migration is repeatable and preserves legacy consumed orders and totals", 
   delete legacy.offerings;
   delete legacy.invoices;
   delete legacy.sequences;
+  legacy.settings.businessName = "EM² Meals";
   legacy.orders = [
     {
       ...sampleState().orders[0],
@@ -579,6 +580,7 @@ test("migration is repeatable and preserves legacy consumed orders and totals", 
   const upgraded = normaliseState(legacy);
   assert.equal(upgraded.offerings.length, 1);
   assert.equal(upgraded.orders[0].consumed, true);
+  assert.equal(upgraded.settings.businessName, "Fork Goodness Baked");
   assert.deepEqual(normaliseState(structuredClone(upgraded)), upgraded);
   const packaged = act(upgraded, "stage", {
     orderId: upgraded.orders[0].id,

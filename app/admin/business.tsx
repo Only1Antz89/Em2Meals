@@ -29,7 +29,7 @@ function proposalEmail(s: State, p: Proposal) {
     })
     .join(
       "\n",
-    )}\n\nEstimated delivery charge: ${money(p.delivery)}. Estimated total: ${p.total === null ? "incomplete — pricing/VAT to confirm" : money(p.total)}. Please confirm prices, VAT and delivery dates. This request is not yet a confirmed purchase.\n\nThank you,\nEM² Meals`;
+    )}\n\nEstimated delivery charge: ${money(p.delivery)}. Estimated total: ${p.total === null ? "incomplete — pricing/VAT to confirm" : money(p.total)}. Please confirm prices, VAT and delivery dates. This request is not yet a confirmed purchase.\n\nThank you,\nFork Goodness Baked`;
 }
 export default function Business({ tab }: { tab: string }) {
   const { s, run, open, href, busy } = useOps();
@@ -65,7 +65,7 @@ export default function Business({ tab }: { tab: string }) {
       proposal: p,
       id,
       to: sup.email,
-      subject: `EM² Meals — ingredient request for ${p.lines.map((l) => l.eventDate).sort()[0]}`,
+      subject: `Fork Goodness Baked — ingredient request for ${p.lines.map((l) => l.eventDate).sort()[0]}`,
       body: proposalEmail(s, p),
     });
   }

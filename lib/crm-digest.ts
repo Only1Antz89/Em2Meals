@@ -60,8 +60,8 @@ export async function runDigest(req: Request, now = new Date()) {
         : "";
       return `${name} — ${item.attentionReason}${due}\n${origin}/admin/crm/client/${encodeURIComponent(item.customer.id)}?mode=live`;
     });
-    const text = `EM² Meals CRM — ${attention.length} relationship${attention.length === 1 ? "" : "s"} need attention\n\n${lines.join("\n\n")}`;
-    const html = `<h1>EM² Meals CRM</h1><p>${attention.length} relationship${attention.length === 1 ? "" : "s"} need attention.</p><ul>${attention
+    const text = `Em2 Catering Platform CRM — ${attention.length} relationship${attention.length === 1 ? "" : "s"} need attention\n\n${lines.join("\n\n")}`;
+    const html = `<h1>Em2 Catering Platform CRM</h1><p>${attention.length} relationship${attention.length === 1 ? "" : "s"} need attention.</p><ul>${attention
       .map((item) => {
         const name = escapeHtml(item.customer.company || item.customer.name);
         const link = `${origin}/admin/crm/client/${encodeURIComponent(item.customer.id)}?mode=live`;
@@ -104,7 +104,7 @@ export async function runDigest(req: Request, now = new Date()) {
           apiKey: c.SMTP2GO_API_KEY,
           sender: c.EMAIL_FROM,
           to: [recipient],
-          subject: `EM² Meals CRM: ${attention.length} relationship${attention.length === 1 ? "" : "s"} need attention`,
+          subject: `Em2 Catering Platform CRM: ${attention.length} relationship${attention.length === 1 ? "" : "s"} need attention`,
           text,
           html,
         });

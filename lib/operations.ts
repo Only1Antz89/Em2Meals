@@ -189,6 +189,11 @@ export function normaliseState(s: State): State {
   s.settings.warningDays ??= 7;
   s.settings.urgentDays ??= 3;
   s.settings.recipeEditorMode ||= "workspace";
+  if (
+    s.settings.businessName === "EM² Meals" ||
+    s.settings.businessName === "EM2 Meals"
+  )
+    s.settings.businessName = "Fork Goodness Baked";
   const legacyCategories: Record<string, (typeof categories)[number]> = {
     beef: "meat",
     chicken: "poultry",
@@ -567,7 +572,7 @@ export function invoiceDraft(s: State, o: Order, at: string) {
     customer: o.details.company || o.details.name,
     email: o.details.email,
     billingAddress: "",
-    businessName: s.settings.businessName || "EM² Meals",
+    businessName: s.settings.businessName || "Fork Goodness Baked",
     businessAddress: s.settings.businessAddress || "",
     vatNumber: s.settings.vatNumber || "",
     paymentInstructions: s.settings.paymentInstructions || "",
@@ -936,7 +941,7 @@ export function applyOperations(
       s.drafts.push({
         id,
         to: i.email,
-        subject: `EM² Meals ${i.kind === "credit" ? "credit note" : "invoice"} ${i.number}`,
+        subject: `Fork Goodness Baked ${i.kind === "credit" ? "credit note" : "invoice"} ${i.number}`,
         body,
         customerId: s.orders.find((o) => o.id === i.orderId)?.customerId,
         at,

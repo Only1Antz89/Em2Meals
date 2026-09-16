@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight, MapPin } from "lucide-react";
-import { Footer, Header } from "./public-shell";
+import { BrandMark, Footer, Header } from "./public-shell";
 import { HeroAtmosphere } from "./hero-atmosphere";
 
 export default function Home() {
@@ -108,9 +108,9 @@ export default function Home() {
 
         <section className="home-story" id="story">
           <div className="home-story__title">
-            <span className="story-mark" aria-hidden="true">EM²</span>
+            <BrandMark className="story-brand-mark" />
             <h2>
-              Emma’s square meals.
+              Fork Goodness Baked.
               <br />
               <em>Anything but ordinary.</em>
             </h2>
@@ -121,7 +121,7 @@ export default function Home() {
               rhythm. Both deserve food made with purpose.
             </p>
             <p>
-              EM² Meals is a Black-owned, independent London business bringing
+              Fork Goodness Baked is a Black-owned, independent London business bringing
               people together through generous food and considered service.
             </p>
             <span className="location-line">

@@ -284,8 +284,8 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                     values: {
                       customerId: o.customerId,
                       to: o.details.email,
-                      subject: `EM² Meals quote ${o.reference} · version ${quote.version}`,
-                      body: `Hello ${o.details.name},\n\nThank you for your enquiry. Here is our quote for ${o.details.eventType} on ${o.details.date || "a date to confirm"}:\n\n${o.items.map((i) => `${s.recipes.find((r) => r.id === i.recipeId)?.name} · ${s.recipes.find((r) => r.id === i.recipeId)?.variant}: ${i.quantity} portions`).join("\n")}\n\n${quote.notes}\n\nBefore VAT: ${money(quote.net)}\nVAT: ${money(quote.total - quote.net)} (${quote.vatRate}%)\nTotal: ${money(quote.total)}\n\nPlease reply to confirm the details and discuss any outstanding dietary or access requirements. Your booking is subject to our confirmation.\n\nEM² Meals`,
+                      subject: `Fork Goodness Baked quote ${o.reference} · version ${quote.version}`,
+                      body: `Hello ${o.details.name},\n\nThank you for your enquiry. Here is our quote for ${o.details.eventType} on ${o.details.date || "a date to confirm"}:\n\n${o.items.map((i) => `${s.recipes.find((r) => r.id === i.recipeId)?.name} · ${s.recipes.find((r) => r.id === i.recipeId)?.variant}: ${i.quantity} portions`).join("\n")}\n\n${quote.notes}\n\nBefore VAT: ${money(quote.net)}\nVAT: ${money(quote.total - quote.net)} (${quote.vatRate}%)\nTotal: ${money(quote.total)}\n\nPlease reply to confirm the details and discuss any outstanding dietary or access requirements. Your booking is subject to our confirmation.\n\nFork Goodness Baked`,
                     },
                   })
                 }

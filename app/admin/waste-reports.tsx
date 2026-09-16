@@ -245,7 +245,7 @@ export default function WasteReports() {
       {recap && (
         <Panel title="Customer-facing catering recap">
           <div id="customer-recap" className="recap-card">
-            <span className="eyebrow">EM² MEALS · YOUR CATERING RECAP</span>
+            <span className="eyebrow">FORK GOODNESS BAKED · YOUR CATERING RECAP</span>
             <h2>{recap.customer}</h2>
             <p>
               {recap.from} to {recap.to} ·{" "}
@@ -330,8 +330,8 @@ export default function WasteReports() {
                   values: {
                     customerId: customer!.id,
                     to: customer!.email,
-                    subject: `Your EM² Meals recap · ${recap.from} to ${recap.to}`,
-                    body: `Hello ${customer!.name},\n\nYour catering recap for ${recap.from} to ${recap.to}:\n${recap.occasions} completed occasions, ${recap.portions} portions.\n${recap.measuredWasteKg.toFixed(2)} kg measured waste (${recap.unmeasuredRecords} records unmeasured).\n${recap.unservedPortions} unserved portions from completed events.\n\nMost ordered:\n${recap.popular.map((p) => `${p.name}: ${p.quantity} portions`).join("\n")}\n\nFeedback: ${recap.feedback === null ? "None recorded" : recap.feedback.toFixed(1) + "/5"}.\nWaste uses record dates; catering uses event dates. These are recorded measurements, not a full waste audit.\n\nEM² Meals`,
+                    subject: `Your Fork Goodness Baked recap · ${recap.from} to ${recap.to}`,
+                    body: `Hello ${customer!.name},\n\nYour catering recap for ${recap.from} to ${recap.to}:\n${recap.occasions} completed occasions, ${recap.portions} portions.\n${recap.measuredWasteKg.toFixed(2)} kg measured waste (${recap.unmeasuredRecords} records unmeasured).\n${recap.unservedPortions} unserved portions from completed events.\n\nMost ordered:\n${recap.popular.map((p) => `${p.name}: ${p.quantity} portions`).join("\n")}\n\nFeedback: ${recap.feedback === null ? "None recorded" : recap.feedback.toFixed(1) + "/5"}.\nWaste uses record dates; catering uses event dates. These are recorded measurements, not a full waste audit.\n\nFork Goodness Baked`,
                   },
                 })
               }

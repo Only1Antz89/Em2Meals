@@ -4,12 +4,31 @@ import { authMode } from "@/lib/auth-mode";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "EM² Meals | Private dining & corporate catering in London",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://em2-meals.vercel.app",
+  ),
+  title: "Fork Goodness Baked | Private dining & corporate catering",
   description:
-    "Private dining for meaningful occasions and thoughtful corporate catering for productive days in London.",
+    "Artisanal goodness for meaningful occasions and productive days, through private dining and thoughtful corporate catering.",
+  applicationName: "Fork Goodness Baked",
+  openGraph: {
+    title: "Fork Goodness Baked",
+    description:
+      "Artisanal goodness for private dining, celebrations and corporate catering.",
+    siteName: "Fork Goodness Baked",
+    type: "website",
+    locale: "en_GB",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Fork Goodness Baked",
+    description:
+      "Artisanal goodness for private dining, celebrations and corporate catering.",
+  },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/apple-icon.png",
   },
 };
 

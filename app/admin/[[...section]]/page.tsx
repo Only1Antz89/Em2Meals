@@ -18,13 +18,13 @@ async function Gate({ section }: { section: string[] }) {
   if (!user)
     return (
       <main className="access-page">
-        <Brand />
+        <Brand admin />
         <h1>Owner access required</h1>
         <p>
           This account isn’t on the owner allowlist. The site owner can
           configure OWNER_EMAILS in the deployment settings.
         </p>
-        <a href="/">Back to EM² Meals</a>
+        <a href="/">Back to Fork Goodness Baked</a>
       </main>
     );
   return (

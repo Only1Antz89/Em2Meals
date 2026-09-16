@@ -26,7 +26,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
     return {
       userId: "demo-owner",
       displayName: "Demo owner",
-      email: "demo-owner@em2.local",
+      email: "demo-owner@em2-platform.local",
       fullName: "Demo owner",
     };
   }

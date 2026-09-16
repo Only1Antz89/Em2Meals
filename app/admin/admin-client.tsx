@@ -486,7 +486,7 @@ export default function Admin({
       <SidebarProvider className="ops-app">
         <Sidebar>
           <SidebarHeader>
-            <Brand />
+            <Brand admin />
             <span className="workspace-label">OWNER WORKSPACE</span>
           </SidebarHeader>
           <SidebarContent>
@@ -585,7 +585,7 @@ export default function Admin({
           <header className="ops-topbar">
             <div>
               <SidebarTrigger />
-              <span>EM² Meals / {title}</span>
+              <span>Em2 Catering Platform / {title}</span>
             </div>
             <div>
               <a

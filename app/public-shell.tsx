@@ -36,25 +36,27 @@ export function Footer() {
         <p>Private dining · Corporate catering · London</p>
       </div>
       <div className="footer-directory">
-        <div>
+        <nav aria-label="Footer pages">
+          <span>Explore</span>
+          <Link href="/">Home</Link>
+          <Link href="/#story">Our story</Link>
+          <Link href="/enquire">Make an enquiry</Link>
+        </nav>
+        <nav aria-label="Footer services">
           <span>Services</span>
           <Link href="/private-chef">Private dining</Link>
           <Link href="/corporate">Corporate catering</Link>
-        </div>
-        <div>
-          <span>Based in</span>
-          <p>London</p>
-          <p>Private homes · Workplaces · Events</p>
-        </div>
+        </nav>
         <Link className="footer-enquiry" href="/enquire">
           Make an enquiry <ArrowUpRight aria-hidden="true" size={20} />
         </Link>
       </div>
       <div className="footer-meta">
         <span>© {new Date().getFullYear()} EM² Meals · London</span>
+        <span>Private homes · Workplaces · Events</span>
         <div>
-          <Link href="/admin">Owner dashboard</Link>
           <Link href="/privacy">Privacy</Link>
+          <Link href="/admin">Owner dashboard</Link>
         </div>
       </div>
     </footer>

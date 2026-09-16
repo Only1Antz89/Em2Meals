@@ -106,7 +106,7 @@ export default function Home() {
           </article>
         </section>
 
-        <section className="home-story">
+        <section className="home-story" id="story">
           <div className="home-story__title">
             <span className="story-mark" aria-hidden="true">EM²</span>
             <h2>

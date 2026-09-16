@@ -1708,6 +1708,23 @@ h2,
   background: #2d424c;
   color: #fff;
 }
+.ops-app .inventory-chevron {
+  margin-left: auto;
+  color: #aebdc2;
+}
+.ops-app [data-slot="sidebar-menu-sub"] {
+  margin-top: 3px;
+  margin-bottom: 4px;
+}
+.ops-app [data-slot="sidebar-menu-sub-button"] {
+  min-height: 36px;
+  font-size: 0.8rem;
+  color: #b7c6cc;
+}
+.ops-app [data-slot="sidebar-menu-sub-button"][data-active="true"] {
+  color: #f4e4ca;
+  background: #2d424c;
+}
 .ops-app [data-slot="sidebar-footer"] {
   padding: 24px;
 }
@@ -1878,6 +1895,58 @@ h2,
 .panel-heading > a {
   font-size: 0.75rem;
   color: #72837c;
+}
+.inventory-filter-bar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e9ece6;
+  background: #fbfcfa;
+}
+.inventory-filter-bar .field {
+  width: min(210px, 100%);
+  gap: 7px;
+}
+.inventory-filter-bar .field > span {
+  color: #697b7d;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.inventory-filter-bar .field input,
+.inventory-filter-bar .field [data-slot="select-trigger"] {
+  min-height: 38px;
+  font-size: 0.8rem;
+}
+.inventory-filter-bar + [data-slot="table-container"] table {
+  min-width: 880px;
+}
+.stock-commitments-compact .ops-panel [data-slot="table-container"] {
+  max-height: 292px;
+  overflow-y: auto;
+}
+.stock-commitments-compact .ops-panel [data-slot="table-header"] {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.stock-category {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #edf1e9;
+  color: #526b5e;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.stock-batch-name b {
+  color: #243f4d;
+  font-weight: 500;
 }
 .ops-panel [data-slot="table-head"] {
   font-size: 0.7rem;
@@ -2467,6 +2536,14 @@ h2,
   .panel-heading {
     padding: 18px;
     flex-wrap: wrap;
+  }
+  .inventory-filter-bar {
+    padding: 16px 18px;
+    gap: 12px;
+  }
+  .inventory-filter-bar .field {
+    flex: 1 1 170px;
+    width: auto;
   }
   .card-list,
   .integration-grid {

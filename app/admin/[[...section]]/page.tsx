@@ -3,13 +3,21 @@ import { owner } from "@/lib/server";
 import { Brand } from "@/app/public-shell";
 import Admin from "@/app/admin/admin-client";
 import { authMode } from "@/lib/auth-mode";
+import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ section?: string[] }>;
+  searchParams: Promise<{ mode?: string | string[] }>;
 }) {
-  const { section = [] } = await params;
+  const [{ section = [] }, query] = await Promise.all([params, searchParams]);
+  if (section[0] === "expiry") {
+    const requestedMode = Array.isArray(query.mode) ? query.mode[0] : query.mode;
+    const mode = requestedMode === "sample" ? "sample" : "live";
+    redirect(`/admin/inventory/storage-expiry?mode=${mode}`);
+  }
   return <Gate section={section} />;
 }
 async function Gate({ section }: { section: string[] }) {

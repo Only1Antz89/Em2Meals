@@ -46,6 +46,78 @@ export const symbols: Record<string, string> = {
   "plant proteins": "◇",
   other: "•",
 };
+
+export type InventoryBatchFilters = {
+  category?: string;
+  location?: string;
+  activeOnly?: boolean;
+  expirySort?: "asc" | "desc";
+};
+
+export type StockMovementFilters = {
+  from?: string;
+  to?: string;
+  reason?: string;
+};
+
+function londonDate(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(parsed);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+export function filterInventoryBatches(
+  state: State,
+  filters: InventoryBatchFilters = {},
+) {
+  const result = state.batches.filter((batch) => {
+    const ingredient = state.ingredients.find(
+      (item) => item.id === batch.ingredientId,
+    );
+    const category = ingredient?.category || "other";
+    return (
+      (!filters.activeOnly || batch.quantity > 0) &&
+      (!filters.category || category === filters.category) &&
+      (!filters.location || batch.location === filters.location)
+    );
+  });
+
+  if (!filters.expirySort) return result;
+  const direction = filters.expirySort === "desc" ? -1 : 1;
+  return result.slice().sort((a, b) => {
+    if (!a.expiry && !b.expiry) return a.id.localeCompare(b.id);
+    if (!a.expiry) return 1;
+    if (!b.expiry) return -1;
+    return (
+      direction * a.expiry.localeCompare(b.expiry) || a.id.localeCompare(b.id)
+    );
+  });
+}
+
+export function filterStockMovements(
+  state: State,
+  filters: StockMovementFilters = {},
+) {
+  return state.movements
+    .filter((movement) => {
+      const date = londonDate(movement.at);
+      return (
+        (!filters.from || date >= filters.from) &&
+        (!filters.to || date <= filters.to) &&
+        (!filters.reason || movement.reason === filters.reason)
+      );
+    })
+    .slice()
+    .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+}
 const short = z.string().max(500);
 const cents = z.number().int().nonnegative().max(1e12);
 const quantity = z.number().finite().nonnegative().max(1e9);

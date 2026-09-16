@@ -6,7 +6,6 @@ import {
   ClipboardList,
   Utensils,
   Package,
-  Clock,
   Truck,
   Users,
   BarChart3,
@@ -19,6 +18,7 @@ import {
   CheckCircle2,
   ArrowRight,
   Send,
+  ChevronUp,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -76,7 +76,12 @@ import {
   SupplierInsights,
   UpcomingVenueResearch,
 } from "./operations-panels";
-import { draftCurrent } from "@/lib/operations";
+import {
+  categories,
+  draftCurrent,
+  filterInventoryBatches,
+  filterStockMovements,
+} from "@/lib/operations";
 import { Context, useOps, type Ops, type Edit, type Spec } from "./ops-context";
 import { updateQuery, useReportFilters } from "./report-controls";
 const navigation = [
@@ -84,13 +89,17 @@ const navigation = [
   ["orders", "Enquiries & orders", ClipboardList],
   ["recipes", "Recipes & costing", Utensils],
   ["inventory", "Inventory", Package],
-  ["expiry", "Storage & expiry", Clock],
   ["suppliers", "Suppliers", Truck],
   ["crm", "CRM", Users],
   ["business", "Business", BarChart3],
   ["reports", "Waste & reports", BarChart3],
   ["assistant", "AI assistant", Sparkles],
   ["settings", "Settings", Settings],
+] as const;
+const inventoryNavigation = [
+  ["", "Stock overview"],
+  ["storage-expiry", "Storage & expiry"],
+  ["movements", "Movement history"],
 ] as const;
 const supplierNavigation = [
   ["overview", "Overview"],
@@ -465,9 +474,15 @@ export default function Admin({
     page === "crm" && section[1] === "client"
       ? s.customers.find((customer) => customer.id === section[2])
       : undefined;
+  const inventoryPage =
+    page === "inventory"
+      ? inventoryNavigation.find(([path]) => path === (section[1] || ""))
+      : undefined;
   const title = crmClient
     ? `CRM / ${crmClient.company || crmClient.name}`
-    : navigation.find((n) => n[0] === page)?.[1] || "Order details";
+    : inventoryPage?.[1] ||
+      navigation.find((n) => n[0] === page)?.[1] ||
+      "Order details";
   return (
     <Context.Provider
       value={{
@@ -498,8 +513,33 @@ export default function Admin({
                       <a href={href(path)}>
                         <Icon size={18} />
                         <span>{label}</span>
+                        {path === "inventory" && page === path && (
+                          <ChevronUp className="inventory-chevron" size={14} />
+                        )}
                       </a>
                     </SidebarMenuButton>
+                    {path === "inventory" && page === path && (
+                      <SidebarMenuSub aria-label="Inventory sections">
+                        {inventoryNavigation.map(([subpath, subLabel]) => (
+                          <SidebarMenuSubItem key={subpath || "overview"}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={(section[1] || "") === subpath}
+                            >
+                              <a
+                                href={href(
+                                  subpath
+                                    ? `inventory/${subpath}`
+                                    : "inventory",
+                                )}
+                              >
+                                {subLabel}
+                              </a>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
                     {path === "suppliers" && page === path && (
                       <SidebarMenuSub aria-label="Supplier sections">
                         {supplierNavigation.map(([tab, subLabel]) => (
@@ -585,7 +625,10 @@ export default function Admin({
           <header className="ops-topbar">
             <div>
               <SidebarTrigger />
-              <span>Em2 Catering Platform / {title}</span>
+              <span>
+                Em2 Catering Platform /{" "}
+                {page === "inventory" ? `Inventory / ${title}` : title}
+              </span>
             </div>
             <div>
               <a
@@ -679,8 +722,8 @@ export default function Admin({
               )
             ) : page === "recipes" ? (
               <Recipes />
-            ) : page === "inventory" || page === "expiry" ? (
-              <Inventory expiry={page === "expiry"} />
+            ) : page === "inventory" && inventoryPage ? (
+              <Inventory view={inventoryPage[0] || "overview"} />
             ) : page === "suppliers" ? (
               <Suppliers />
             ) : page === "business" ? (
@@ -1055,161 +1098,296 @@ export function stockEditor(
     },
   };
 }
-function Inventory({ expiry }: { expiry: boolean }) {
+type InventoryView = "overview" | "storage-expiry" | "movements";
+const storageLocations = ["fridge", "freezer", "ambient"] as const;
+
+function Inventory({ view }: { view: InventoryView }) {
+  if (view === "storage-expiry") return <StorageExpiryRegister />;
+  if (view === "movements") return <MovementHistory />;
+  return <StockOverview />;
+}
+
+function StockOverview() {
   const { s, open } = useOps();
+  const { params } = useReportFilters();
+  const category = params.get("category") || "";
+  const location = params.get("location") || "";
+  const batches = filterInventoryBatches(s, {
+    category,
+    location,
+    activeOnly: true,
+  });
   return (
     <>
-      <StockSummary />
-      <div className="metric-grid">
-        <Metric
-          label="Stock batches"
-          value={s.batches.filter((b) => b.quantity > 0).length}
-          detail="Traceable intake records"
-        />
-        <Metric
-          label="In the fridge"
-          value={
-            s.batches.filter((b) => b.location === "fridge" && b.quantity > 0)
-              .length
-          }
-          detail="Active batches"
-        />
-        <Metric
-          label="In the freezer"
-          value={
-            s.batches.filter((b) => b.location === "freezer" && b.quantity > 0)
-              .length
-          }
-          detail="Active batches"
-        />
-        <Metric
-          label="Date review needed"
-          value={
-            s.batches.filter(
-              (b) => b.quantity > 0 && (!b.expiry || b.expiry < today()),
-            ).length
-          }
-          detail="Missing or expired dates"
-        />
+      <div className="stock-commitments-compact">
+        <StockSummary />
       </div>
       <Panel
-        title={expiry ? "Storage & expiry register" : "Stock on hand"}
+        title="Stock on hand"
         action={<Add onClick={() => open(stockEditor(s))}>Receive stock</Add>}
       >
+        <InventoryFilterBar>
+          <CategoryFilter value={category} />
+          <LocationFilter value={location} />
+        </InventoryFilterBar>
         <GridTable
-          heads={
-            expiry
-              ? [
-                  "Ingredient / batch",
-                  "Location",
-                  "Label expiry",
-                  "Opened / frozen / thawed",
-                  "Notes",
-                  "",
-                ]
-              : [
-                  "Ingredient / batch",
-                  "Quantity",
-                  "Available",
-                  "Location",
-                  "Label expiry",
-                  "",
-                ]
-          }
-          rows={s.batches.map((b) => [
-            <span key="cell-0">
-              <b>{s.ingredients.find((i) => i.id === b.ingredientId)?.name}</b>
-              <small className="subtext">
-                {b.id.slice(0, 8)} · received {b.intake}
-              </small>
-            </span>,
-            ...(expiry
-              ? [
-                  b.location,
-                  <ExpiryBadge
-                    key="cell-1"
-                    expiry={b.expiry}
-                    dateType={b.dateType}
-                  />,
-                  `${b.opened || "—"} / ${b.frozen || "—"} / ${b.thawed || "—"}`,
-                  b.notes,
-                ]
-              : [
-                  `${Math.round(b.quantity * 100) / 100} ${s.ingredients.find((i) => i.id === b.ingredientId)?.unit}`,
-                  `${Math.round(available(s, b.id) * 100) / 100}`,
-                  b.location,
-                  <ExpiryBadge
-                    key="cell-3"
-                    expiry={b.expiry}
-                    dateType={b.dateType}
-                  />,
-                ]),
-            <Button
-              key="cell-2"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                open({
-                  title: "Update batch",
-                  action: "stock-adjust",
-                  values: { ...b, batchId: b.id, reason: "" },
-                  fields: [
-                    {
-                      key: "quantity",
-                      label: "Corrected quantity (base units)",
-                      type: "number",
-                    },
-                    {
-                      key: "reason",
-                      label: "Reason for change",
-                      required: true,
-                    },
-                    {
-                      key: "location",
-                      label: "Storage location",
-                      options: ["fridge", "freezer", "ambient"],
-                    },
-                    {
-                      key: "expiry",
-                      label: "Verified expiry date",
-                      type: "date",
-                    },
-                    { key: "opened", label: "Opened date", type: "date" },
-                    { key: "frozen", label: "Frozen date", type: "date" },
-                    { key: "thawed", label: "Thawed date", type: "date" },
-                  ],
-                })
-              }
-            >
-              Update
-            </Button>,
-          ])}
+          heads={[
+            "Ingredient / batch",
+            "Category",
+            "Quantity",
+            "Available",
+            "Storage location",
+            "Label expiry",
+            "",
+          ]}
+          rows={batches.map((batch) => {
+            const ingredient = s.ingredients.find(
+              (item) => item.id === batch.ingredientId,
+            );
+            return [
+              <BatchName key="batch" batch={batch} name={ingredient?.name} />,
+              <StockCategory key="category" value={ingredient?.category} />,
+              `${Math.round(batch.quantity * 100) / 100} ${ingredient?.unit || ""}`,
+              `${Math.round(available(s, batch.id) * 100) / 100} ${ingredient?.unit || ""}`,
+              <Tag key="location">{batch.location}</Tag>,
+              <ExpiryBadge
+                key="expiry"
+                expiry={batch.expiry}
+                dateType={batch.dateType}
+              />,
+              <UpdateBatchButton key="update" batch={batch} />,
+            ];
+          })}
+          empty="No active stock matches these filters."
         />
-        <p className="panel-note">
-          Missing or expired label dates prevent allocation. Changing storage
-          does not automatically extend shelf life. Record the verified label or
-          approved handling instructions.
-        </p>
-      </Panel>
-      <Panel title="Stock movement history">
-        <GridTable
-          heads={["When", "Ingredient", "Change", "Reason"]}
-          rows={s.movements
-            .slice(-30)
-            .reverse()
-            .map((m) => [
-              new Date(m.at).toLocaleString("en-GB"),
-              s.ingredients.find(
-                (i) =>
-                  i.id ===
-                  s.batches.find((b) => b.id === m.batchId)?.ingredientId,
-              )?.name,
-              Math.round(m.quantity * 100) / 100,
-              m.reason,
-            ])}
-        />
+        <StockHandlingNote />
       </Panel>
     </>
+  );
+}
+
+function StorageExpiryRegister() {
+  const { s } = useOps();
+  const { params } = useReportFilters();
+  const category = params.get("category") || "";
+  const location = params.get("location") || "";
+  const expirySort = params.get("sort") === "desc" ? "desc" : "asc";
+  const batches = filterInventoryBatches(s, {
+    category,
+    location,
+    activeOnly: true,
+    expirySort,
+  });
+  return (
+    <Panel title="Storage & expiry register">
+      <InventoryFilterBar>
+        <CategoryFilter value={category} />
+        <LocationFilter value={location} />
+        <Pick
+          label="Expiry order"
+          value={expirySort}
+          onChange={(sort) => updateQuery({ sort })}
+          options={[
+            { value: "asc", label: "Earliest first" },
+            { value: "desc", label: "Latest first" },
+          ]}
+        />
+      </InventoryFilterBar>
+      <GridTable
+        heads={[
+          "Ingredient / batch",
+          "Category",
+          "Storage location",
+          "Label expiry",
+          "Opened / frozen / thawed",
+          "Notes",
+          "",
+        ]}
+        rows={batches.map((batch) => {
+          const ingredient = s.ingredients.find(
+            (item) => item.id === batch.ingredientId,
+          );
+          return [
+            <BatchName key="batch" batch={batch} name={ingredient?.name} />,
+            <StockCategory key="category" value={ingredient?.category} />,
+            <Tag key="location">{batch.location}</Tag>,
+            <ExpiryBadge
+              key="expiry"
+              expiry={batch.expiry}
+              dateType={batch.dateType}
+            />,
+            `${batch.opened || "—"} / ${batch.frozen || "—"} / ${batch.thawed || "—"}`,
+            batch.notes || "—",
+            <UpdateBatchButton key="update" batch={batch} />,
+          ];
+        })}
+        empty="No active stock matches these filters."
+      />
+      <StockHandlingNote />
+    </Panel>
+  );
+}
+
+function MovementHistory() {
+  const { s } = useOps();
+  const { params } = useReportFilters();
+  const from = params.get("from") || "";
+  const to = params.get("to") || "";
+  const reason = params.get("reason") || "";
+  const reasons = [...new Set(s.movements.map((movement) => movement.reason))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  const movements = filterStockMovements(s, { from, to, reason });
+  return (
+    <Panel title="Stock movement history">
+      <InventoryFilterBar>
+        <Field
+          label="From"
+          type="date"
+          value={from}
+          onChange={(value) => updateQuery({ from: value })}
+        />
+        <Field
+          label="To"
+          type="date"
+          value={to}
+          onChange={(value) => updateQuery({ to: value })}
+        />
+        <Pick
+          label="Reason"
+          value={reason}
+          onChange={(value) => updateQuery({ reason: value })}
+          options={[
+            { value: "", label: "All reasons" },
+            ...reasons.map((value) => ({ value, label: value })),
+          ]}
+        />
+      </InventoryFilterBar>
+      <GridTable
+        heads={["When", "Ingredient", "Category", "Change", "Reason"]}
+        rows={movements.map((movement) => {
+          const batch = s.batches.find((item) => item.id === movement.batchId);
+          const ingredient = s.ingredients.find(
+            (item) => item.id === batch?.ingredientId,
+          );
+          return [
+            new Date(movement.at).toLocaleString("en-GB"),
+            ingredient?.name || "Unknown ingredient",
+            <StockCategory key="category" value={ingredient?.category} />,
+            `${Math.round(movement.quantity * 100) / 100} ${ingredient?.unit || ""}`,
+            movement.reason,
+          ];
+        })}
+        empty="No stock movements match this date range and reason."
+      />
+    </Panel>
+  );
+}
+
+function InventoryFilterBar({ children }: { children: ReactNode }) {
+  return <div className="inventory-filter-bar">{children}</div>;
+}
+
+function CategoryFilter({ value }: { value: string }) {
+  return (
+    <Pick
+      label="Category"
+      value={value}
+      onChange={(category) => updateQuery({ category })}
+      options={[
+        { value: "", label: "All categories" },
+        ...categories.map((category) => ({ value: category, label: category })),
+      ]}
+    />
+  );
+}
+
+function LocationFilter({ value }: { value: string }) {
+  return (
+    <Pick
+      label="Storage location"
+      value={value}
+      onChange={(location) => updateQuery({ location })}
+      options={[
+        { value: "", label: "All locations" },
+        ...storageLocations,
+      ]}
+    />
+  );
+}
+
+function StockCategory({ value }: { value?: string }) {
+  return <span className="stock-category">{value || "other"}</span>;
+}
+
+function BatchName({
+  batch,
+  name,
+}: {
+  batch: State["batches"][number];
+  name?: string;
+}) {
+  return (
+    <span className="stock-batch-name">
+      <b>{name || "Unknown ingredient"}</b>
+      <small className="subtext">
+        {batch.id.slice(0, 8)} · received {batch.intake}
+      </small>
+    </span>
+  );
+}
+
+function UpdateBatchButton({ batch }: { batch: State["batches"][number] }) {
+  const { open } = useOps();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() =>
+        open({
+          title: "Update batch",
+          action: "stock-adjust",
+          values: { ...batch, batchId: batch.id, reason: "" },
+          fields: [
+            {
+              key: "quantity",
+              label: "Corrected quantity (base units)",
+              type: "number",
+            },
+            {
+              key: "reason",
+              label: "Reason for change",
+              required: true,
+            },
+            {
+              key: "location",
+              label: "Storage location",
+              options: [...storageLocations],
+            },
+            {
+              key: "expiry",
+              label: "Verified expiry date",
+              type: "date",
+            },
+            { key: "opened", label: "Opened date", type: "date" },
+            { key: "frozen", label: "Frozen date", type: "date" },
+            { key: "thawed", label: "Thawed date", type: "date" },
+          ],
+        })
+      }
+    >
+      Update
+    </Button>
+  );
+}
+
+function StockHandlingNote() {
+  return (
+    <p className="panel-note">
+      Missing or expired label dates prevent allocation. Changing storage does
+      not automatically extend shelf life. Record the verified label or approved
+      handling instructions.
+    </p>
   );
 }
 function Suppliers() {

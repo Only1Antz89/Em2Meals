@@ -433,6 +433,8 @@ import {
   draftCurrent,
   shortage,
   invoiceText,
+  filterInventoryBatches,
+  filterStockMovements,
 } from "../lib/operations";
 function fixture(stock = 1000) {
   let s = emptyState();
@@ -560,6 +562,124 @@ test("expiry labels distinguish date types and month boundaries", () => {
     "29 days remaining",
   );
   assert.equal(expiryStatus("", "use-by").tone, "amber");
+});
+test("inventory selectors filter active stock and sort dated batches with blanks last", () => {
+  const s = emptyState();
+  s.ingredients.push(
+    {
+      id: "meat",
+      name: "Beef",
+      category: "meat",
+      unit: "g",
+      packQuantity: 100,
+      packCost: 100,
+      yield: 1,
+      allergens: "",
+      supplierId: "",
+      threshold: 0,
+    },
+    {
+      id: "veg",
+      name: "Carrots",
+      category: "vegetables",
+      unit: "g",
+      packQuantity: 100,
+      packCost: 100,
+      yield: 1,
+      allergens: "",
+      supplierId: "",
+      threshold: 0,
+    },
+  );
+  const batch = (
+    id: string,
+    ingredientId: string,
+    quantity: number,
+    location: string,
+    expiry: string,
+  ) => ({
+    id,
+    ingredientId,
+    quantity,
+    location,
+    intake: "2026-09-01",
+    expiry,
+    dateType: "use-by",
+    opened: "",
+    frozen: "",
+    thawed: "",
+    notes: "",
+    unitCost: 1,
+  });
+  s.batches.push(
+    batch("later", "meat", 10, "freezer", "2026-09-20"),
+    batch("earlier", "veg", 5, "fridge", "2026-09-10"),
+    batch("undated", "veg", 5, "ambient", ""),
+    batch("empty", "veg", 0, "freezer", "2026-09-01"),
+  );
+
+  assert.deepEqual(
+    filterInventoryBatches(s, { activeOnly: true }).map((item) => item.id),
+    ["later", "earlier", "undated"],
+  );
+  assert.deepEqual(
+    filterInventoryBatches(s, {
+      activeOnly: true,
+      category: "vegetables",
+      location: "fridge",
+    }).map((item) => item.id),
+    ["earlier"],
+  );
+  assert.deepEqual(
+    filterInventoryBatches(s, {
+      activeOnly: true,
+      expirySort: "asc",
+    }).map((item) => item.id),
+    ["earlier", "later", "undated"],
+  );
+  assert.deepEqual(
+    filterInventoryBatches(s, {
+      activeOnly: true,
+      expirySort: "desc",
+    }).map((item) => item.id),
+    ["later", "earlier", "undated"],
+  );
+});
+test("movement selectors use inclusive London dates and exact reasons", () => {
+  const s = emptyState();
+  s.movements.push(
+    {
+      id: "included",
+      batchId: "batch",
+      quantity: -1,
+      reason: "Packaged",
+      at: "2026-09-15T23:30:00.000Z",
+    },
+    {
+      id: "wrong-reason",
+      batchId: "batch",
+      quantity: 1,
+      reason: "Stock intake",
+      at: "2026-09-16T12:00:00.000Z",
+    },
+    {
+      id: "next-day",
+      batchId: "batch",
+      quantity: -2,
+      reason: "Packaged",
+      at: "2026-09-16T23:30:00.000Z",
+    },
+  );
+
+  assert.deepEqual(
+    filterStockMovements(s, {
+      from: "2026-09-16",
+      to: "2026-09-16",
+      reason: "Packaged",
+    }).map((item) => item.id),
+    ["included"],
+  );
+  assert.equal(filterStockMovements(s, { reason: "packaged" }).length, 0);
 });
 test("migration is repeatable and preserves legacy consumed orders and totals", () => {
   const s = fixture();

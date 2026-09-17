@@ -7,6 +7,7 @@ import { POST as send } from "../app/api/admin/send/route";
 import { POST as submit } from "../app/api/enquiries/route";
 import { POST as resolve } from "../app/api/admin/delivery/route";
 import { runDigest } from "../lib/crm-digest";
+import { gemini } from "../lib/integrations";
 function req(body: unknown) {
   return new Request("http://localhost/api/test", {
     method: "POST",
@@ -439,6 +440,78 @@ test("grounded venue research preserves citations and customer access separately
       "https://example.com/parking",
     );
     assert.match(saved.venueResearch!.text, /Loading access unknown/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete env.GEMINI_API_KEY;
+  }
+});
+
+test("Gemini sends the supported request shape and removes duplicate citations", async () => {
+  env.GEMINI_API_KEY = "fake-gemini-key";
+  env.GEMINI_MODEL = "gemini-3.8-flash";
+  const originalFetch = globalThis.fetch;
+  let request: { url: string; init?: RequestInit } | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = { url: String(input), init };
+    return Response.json({
+      candidates: [
+        {
+          content: { parts: [{ text: "  Answer " }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: "https://example.com/source", title: "Source" } },
+              { web: { uri: "https://example.com/source", title: "Duplicate" } },
+              { web: { uri: "http://unsafe.example.com", title: "Unsafe" } },
+            ],
+          },
+        },
+      ],
+    });
+  };
+  try {
+    const result = await gemini("Question", "System", undefined, true);
+    assert.match(request!.url, /gemini-3\.8-flash:generateContent$/);
+    assert.equal(
+      new Headers(request!.init?.headers).get("x-goog-api-key"),
+      "fake-gemini-key",
+    );
+    const body = JSON.parse(String(request!.init?.body));
+    assert.equal(body.systemInstruction.parts[0].text, "System");
+    assert.equal(body.tools[0].google_search instanceof Object, true);
+    assert.equal(result.text, "Answer");
+    assert.deepEqual(result.sources, [
+      { title: "Source", url: "https://example.com/source" },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete env.GEMINI_API_KEY;
+    delete env.GEMINI_MODEL;
+  }
+});
+
+test("Gemini retries transient failures and gives actionable setup errors", async () => {
+  env.GEMINI_API_KEY = "fake-gemini-key";
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1)
+      return new Response("busy", {
+        status: 503,
+        headers: { "retry-after": "0" },
+      });
+    return Response.json({
+      candidates: [{ content: { parts: [{ text: "ok" }] } }],
+    });
+  };
+  try {
+    assert.equal((await gemini("Question", "System")).text, "ok");
+    assert.equal(calls, 2);
+    globalThis.fetch = async () => new Response("missing", { status: 404 });
+    await assert.rejects(
+      gemini("Question", "System"),
+      /Check GEMINI_MODEL in the deployment environment/,
+    );
   } finally {
     globalThis.fetch = originalFetch;
     delete env.GEMINI_API_KEY;

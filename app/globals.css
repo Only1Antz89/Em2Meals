@@ -3605,6 +3605,53 @@ h2,
 .venue-search .inline-actions {
   align-items: end;
 }
+
+.venue-map-panel {
+  margin-top: 0.85rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--card);
+}
+
+.venue-map {
+  width: 100%;
+  min-height: 280px;
+}
+
+.venue-map-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  font-size: 0.86rem;
+}
+
+.venue-map-caption span {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.venue-map-caption a {
+  flex: 0 0 auto;
+  color: var(--primary);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+@media (max-width: 640px) {
+  .venue-map {
+    min-height: 230px;
+  }
+
+  .venue-map-caption {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 .research-text {
   white-space: pre-wrap;
   font-size: 13px;

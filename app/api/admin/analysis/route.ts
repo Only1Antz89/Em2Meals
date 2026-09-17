@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       dietary: o.details.dietary,
       eventType: o.details.eventType,
       attendees: o.details.attendees,
-      requirements: o.details.requirements.map((r, i) => ({
+      requirements: (o.details.requirements || []).map((r, i) => ({
         reference: `Guest ${i + 1}`,
         requirements: r.requirements,
       })),
@@ -92,7 +92,8 @@ export async function POST(req: Request) {
         required: ["summary", "meals", "dietary", "theme", "questions"],
       },
     );
-    const analysis = schema.parse(JSON.parse(result.text));
+    const cleanedText = result.text.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1").trim();
+    const analysis = schema.parse(JSON.parse(cleanedText));
     if (
       analysis.meals.some(
         (m) => m.recipeId && !state.recipes.some((r) => r.id === m.recipeId),

@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useState } from "react";
 import { useOps } from "./ops-context";
 import { Panel, GridTable, Tag, Drafts } from "./admin-client";
@@ -598,12 +599,21 @@ export default function Business({ tab }: { tab: string }) {
           </DialogHeader>
           {currentInvoice && (
             <>
-              <pre className="invoice-print">
-                {currentInvoice.status === "draft"
-                  ? "DRAFT — NOT ISSUED\n\n"
-                  : ""}
-                {invoiceText(s, currentInvoice)}
-              </pre>
+              <div className="invoice-print">
+                <Image
+                  className="invoice-logo"
+                  src="/brand/fork-goodness-baked-lockup.svg"
+                  alt="Fork Goodness Baked"
+                  width={720}
+                  height={132}
+                />
+                <pre className="invoice-copy">
+                  {currentInvoice.status === "draft"
+                    ? "DRAFT — NOT ISSUED\n\n"
+                    : ""}
+                  {invoiceText(s, currentInvoice)}
+                </pre>
+              </div>
               <Button onClick={() => window.print()}>Print / save PDF</Button>
             </>
           )}

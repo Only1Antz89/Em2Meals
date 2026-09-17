@@ -28,6 +28,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
   const { s, run, api, href, busy, open, integrations } = useOps();
   const o = s.orders.find((x) => x.id === orderId);
   const [error, setError] = useState(""),
+    [analysisError, setAnalysisError] = useState(""),
     [cancel, setCancel] = useState(false),
     [edit, setEdit] = useState<Order | null>(null),
     [review, setReview] = useState<any[] | null>(null),
@@ -384,13 +385,33 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
           action={
             <Button
               size="sm"
-              disabled={busy}
-              onClick={() => safe(() => api("analysis", { orderId: o.id }))}
+              disabled={busy || !integrations.gemini}
+              title={
+                !integrations.gemini
+                  ? "Configure GEMINI_API_KEY in environment to enable analysis"
+                  : undefined
+              }
+              onClick={() => {
+                setAnalysisError("");
+                safe(async () => {
+                  try {
+                    await api("analysis", { orderId: o.id });
+                  } catch (e) {
+                    setAnalysisError((e as Error).message);
+                    throw e;
+                  }
+                });
+              }}
             >
               {busy ? "Working…" : "Analyse request"}
             </Button>
           }
         >
+          {analysisError && (
+            <p role="alert" className="error-message">
+              {analysisError}
+            </p>
+          )}
           {o.analysis ? (
             <div className="analysis-result">
               <p>{(o.analysis as any).summary}</p>

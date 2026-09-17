@@ -28,8 +28,8 @@ export default function Page() {
           </div>
           <div className="service-page-hero__image">
             <Image
-              src="/images/em2-corporate-team.png"
-              alt="Black catering professionals arranging a working lunch in a London office"
+              src="/images/corporate-catering-hero.jpg"
+              alt="A Black-led catering team arranging breakfast and lunch in a London office"
               fill
               priority
               sizes="(max-width: 800px) 100vw, 58vw"

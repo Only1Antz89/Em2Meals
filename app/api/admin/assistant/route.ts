@@ -71,6 +71,13 @@ export async function POST(req: Request) {
       ),
     );
   } catch (e) {
-    return errorResponse(e);
+    const status =
+      (e as any)?.status ||
+      (e instanceof Error && /rate limit/i.test(e.message)
+        ? 429
+        : e instanceof Error && /(unavailable|setup required)/i.test(e.message)
+          ? 503
+          : 400);
+    return errorResponse(e, status);
   }
 }

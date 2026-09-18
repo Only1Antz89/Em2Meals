@@ -54,6 +54,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Field, Pick, Notes } from "@/components/form-controls";
+import {
+  AutoSousFormattedAnswer,
+  AutoSousRateLimitAlert,
+} from "./assistant-display";
 import { Brand } from "../public-shell";
 import {
   emptyState,
@@ -1890,9 +1894,27 @@ function SettingsPage() {
 function Assistant() {
   const { api, s, integrations, busy } = useOps();
   const [question, setQuestion] = useState(""),
+    [lastQuestion, setLastQuestion] = useState(""),
     [result, setResult] = useState<any>(null),
     [error, setError] = useState(""),
     [venue, setVenue] = useState("");
+
+  const runQuery = async (queryText: string, venueOrderId?: string) => {
+    const trimmed = queryText.trim();
+    if (!trimmed && !venueOrderId) return;
+    setError("");
+    try {
+      const payload = venueOrderId
+        ? { question: trimmed || "Research venue", venueOrderId }
+        : { question: trimmed };
+      const res = await api("assistant", payload);
+      setResult(res);
+      setLastQuestion(trimmed);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   return (
     <>
       <Panel
@@ -1918,7 +1940,15 @@ function Assistant() {
               "What ingredients are needed for upcoming orders?",
               "What stock should I restock?",
             ].map((q) => (
-              <Button key={q} variant="outline" onClick={() => setQuestion(q)}>
+              <Button
+                key={q}
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setQuestion(q);
+                  runQuery(q);
+                }}
+              >
                 {q}
               </Button>
             ))}
@@ -1926,12 +1956,7 @@ function Assistant() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              setError("");
-              try {
-                setResult(await api("assistant", { question }));
-              } catch (e) {
-                setError((e as Error).message);
-              }
+              await runQuery(question);
             }}
           >
             <Notes
@@ -1940,7 +1965,7 @@ function Assistant() {
               onChange={setQuestion}
             />
             <Button
-              disabled={busy || !question}
+              disabled={busy || !question.trim()}
               className="mt-4"
             >
               {busy ? "Looking into it…" : "Ask AutoSous"}
@@ -1949,19 +1974,17 @@ function Assistant() {
           </form>
         </div>
         {error && (
-          <p role="alert" className="error-message">
-            {error}
-          </p>
+          <AutoSousRateLimitAlert
+            error={error}
+            busy={busy}
+            onRetry={() => runQuery(question || lastQuestion)}
+          />
         )}
         {result && (
-          <div className="assistant-answer">
-            <pre>{result.text}</pre>
-            {result.sources?.map((s: any) => (
-              <a key={s.url} href={s.url} target="_blank" rel="noreferrer">
-                {s.title} ↗
-              </a>
-            ))}
-          </div>
+          <AutoSousFormattedAnswer
+            result={result}
+            question={lastQuestion}
+          />
         )}
       </Panel>
       <Panel title="Public venue research">
@@ -1978,20 +2001,14 @@ function Assistant() {
           <Button
             disabled={!venue || busy}
             onClick={async () => {
-              setError("");
-              try {
-                setResult(
-                  await api("assistant", {
-                    question: "Research venue",
-                    venueOrderId: venue,
-                  }),
-                );
-              } catch (e) {
-                setError((e as Error).message);
-              }
+              const selectedOrder = s.orders.find((o) => o.id === venue);
+              const label = selectedOrder
+                ? `Venue Research: ${selectedOrder.details.venue} (${selectedOrder.reference})`
+                : "Research venue";
+              await runQuery(label, venue);
             }}
           >
-            Research venue
+            {busy ? "Researching…" : "Research venue"}
           </Button>
         </div>
         <p className="panel-note">

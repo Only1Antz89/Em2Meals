@@ -11,6 +11,15 @@ type GeminiResponse = {
   }>;
 };
 
+export class GeminiIntegrationError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "GeminiIntegrationError";
+    this.status = status;
+  }
+}
+
 const RETRYABLE_GEMINI_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 function geminiFailure(status: number) {
@@ -23,11 +32,12 @@ function geminiFailure(status: number) {
   return `AutoSous request failed (${status}). Review manually or retry.`;
 }
 
-function retryDelay(response: Response) {
+function retryDelay(response: Response, attempt = 0) {
   const seconds = Number(response.headers.get("retry-after"));
-  return Number.isFinite(seconds) && seconds >= 0
-    ? Math.min(seconds * 1000, 2000)
-    : 250;
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, 5000);
+  }
+  return Math.min(800 * Math.pow(2, attempt) + Math.floor(Math.random() * 400), 4000);
 }
 
 const wait = (milliseconds: number) =>
@@ -87,7 +97,7 @@ export async function gemini(
   if (grounded) body.tools = [{ google_search: {} }];
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   let r: Response | undefined;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     r = await fetch(url, {
       method: "POST",
       headers: {
@@ -97,11 +107,14 @@ export async function gemini(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(35000),
     });
-    if (r.ok || !RETRYABLE_GEMINI_STATUSES.has(r.status) || attempt === 1)
+    if (r.ok || !RETRYABLE_GEMINI_STATUSES.has(r.status) || attempt === 2)
       break;
-    await wait(retryDelay(r));
+    await wait(retryDelay(r, attempt));
   }
-  if (!r?.ok) throw Error(geminiFailure(r?.status || 503));
+  if (!r?.ok) {
+    const status = r?.status || 503;
+    throw new GeminiIntegrationError(status, geminiFailure(status));
+  }
   const j = (await r.json()) as GeminiResponse;
   const candidate = j.candidates?.[0];
   const text = candidate?.content?.parts

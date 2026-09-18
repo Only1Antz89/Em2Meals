@@ -58,6 +58,7 @@ import {
   AutoSousFormattedAnswer,
   AutoSousRateLimitAlert,
 } from "./assistant-display";
+import { AutoSousIcon } from "./autosous-icon";
 import { Brand } from "../public-shell";
 import {
   emptyState,
@@ -97,7 +98,7 @@ const navigation = [
   ["crm", "CRM", Users],
   ["business", "Business", BarChart3],
   ["reports", "Waste & reports", BarChart3],
-  ["assistant", "AutoSous", Sparkles],
+  ["assistant", "AutoSous", AutoSousIcon],
   ["settings", "Settings", Settings],
 ] as const;
 const inventoryNavigation = [
@@ -1928,7 +1929,7 @@ function Assistant() {
         }
       >
         <div className="assistant-intro">
-          <Sparkles size={30} />
+          <AutoSousIcon size={36} />
           <h2>What’s needed for the next occasion?</h2>
           <p>
             Ask about orders, ingredient requirements, stock shortages or saved

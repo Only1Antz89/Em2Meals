@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import {
-  Sparkles,
   Copy,
   Check,
   Calendar,
@@ -14,6 +13,7 @@ import {
   Clock,
   RotateCw,
 } from "lucide-react";
+import { AutoSousIcon } from "./autosous-icon";
 import { Button } from "@/components/ui/button";
 
 type Source = {
@@ -227,7 +227,7 @@ export function AutoSousFormattedAnswer({
       <div className="autosous-response-header">
         <div className="autosous-brand">
           <div className="autosous-icon-badge">
-            <Sparkles size={16} />
+            <AutoSousIcon size={20} />
           </div>
           <div>
             <div className="autosous-title-row">

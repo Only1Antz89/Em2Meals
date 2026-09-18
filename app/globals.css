@@ -3209,6 +3209,8 @@ h2,
 
 .footer-directory > nav:nth-child(2) {
   justify-self: end;
+  justify-items: end;
+  text-align: right;
   min-width: min(260px, 32vw);
 }
 

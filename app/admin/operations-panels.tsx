@@ -397,12 +397,7 @@ export function OrderVenue({ order: o }: { order: Order }) {
       action={
         <Button
           variant="outline"
-          disabled={busy || !integrations.gemini}
-          title={
-            !integrations.gemini
-              ? "AutoSous is not available in this deployment"
-              : undefined
-          }
+          disabled={busy}
           onClick={() => research(true)}
         >
           Refresh research
@@ -967,12 +962,7 @@ export function SupplierInsights({
                 <Button
                   className="supplier-research"
                   variant="outline"
-                  disabled={busy || !integrations.gemini}
-                  title={
-                    !integrations.gemini
-                      ? "AutoSous is not available in this deployment"
-                      : undefined
-                  }
+                  disabled={busy}
                   onClick={async () => {
                     try {
                       setError("");

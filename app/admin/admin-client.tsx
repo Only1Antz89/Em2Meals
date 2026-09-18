@@ -422,8 +422,11 @@ export default function Admin({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...payload, mode }),
       });
-      const j: any = await r.json();
-      if (!r.ok) throw Error(j.error);
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok)
+        throw Error(
+          j.error || `AutoSous request failed (${r.status}). Please try again.`,
+        );
       if (j.state) {
         ++fetchGeneration.current;
         setLastUpdated(new Date().toISOString());
@@ -1937,12 +1940,7 @@ function Assistant() {
               onChange={setQuestion}
             />
             <Button
-              disabled={busy || !question || !integrations.gemini}
-              title={
-                !integrations.gemini
-                  ? "AutoSous is not available in this deployment"
-                  : undefined
-              }
+              disabled={busy || !question}
               className="mt-4"
             >
               {busy ? "Looking into it…" : "Ask AutoSous"}
@@ -1978,12 +1976,7 @@ function Assistant() {
             }))}
           />
           <Button
-            disabled={!venue || busy || !integrations.gemini}
-            title={
-              !integrations.gemini
-                ? "AutoSous is not available in this deployment"
-                : undefined
-            }
+            disabled={!venue || busy}
             onClick={async () => {
               setError("");
               try {

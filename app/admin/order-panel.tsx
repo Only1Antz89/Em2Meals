@@ -385,12 +385,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
           action={
             <Button
               size="sm"
-              disabled={busy || !integrations.gemini}
-              title={
-                !integrations.gemini
-                  ? "Configure AutoSous in the deployment environment to enable analysis"
-                  : undefined
-              }
+              disabled={busy}
               onClick={() => {
                 setAnalysisError("");
                 safe(async () => {

@@ -89,16 +89,22 @@ export function Notes({
   label,
   value,
   onChange,
+  placeholder,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  placeholder?: string;
+  hint?: string;
 }) {
   return (
     <label className="field wide">
       <span>{label}</span>
+      {hint && <small className="field-hint text-xs text-muted-foreground">{hint}</small>}
       <Textarea
         aria-label={label}
+        placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={3}

@@ -59,8 +59,8 @@ export default function Page() {
         <section className="service-editorial">
           <div className="service-editorial__image">
             <Image
-              src="/images/chef.jpg"
-              alt="A Black chef preparing fresh ingredients in the kitchen"
+              src="/images/food-prep.jpg"
+              alt="Fresh vibrant vegetables being washed under running water in the kitchen"
               fill
               sizes="(max-width: 800px) 100vw, 48vw"
             />
@@ -90,7 +90,7 @@ export default function Page() {
           <ol>
             <li><span>01</span><div><h3>Share the occasion</h3><p>Tell us the date, location, guest count and what you have in mind.</p></div></li>
             <li><span>02</span><div><h3>Shape the menu</h3><p>We refine the food, dietary needs and practical details with you.</p></div></li>
-            <li><span>03</span><div><h3>Enjoy your guests</h3><p>We arrive prepared and deliver the experience you agreed.</p></div></li>
+            <li><span>03</span><div><h3>Enjoy with your guests</h3><p>We arrive prepared and deliver the experience.</p></div></li>
           </ol>
         </section>
 

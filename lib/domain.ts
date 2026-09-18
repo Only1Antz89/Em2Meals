@@ -110,6 +110,7 @@ export type Enquiry = {
   attendees: number;
   date: string;
   eventTime: string;
+  eventEndTime?: string;
   arrivalTime: string;
   requests: string;
   dietary: string;
@@ -431,6 +432,7 @@ export const enquirySchema = z
     attendees: count,
     date: maybeDate,
     eventTime: time,
+    eventEndTime: time.optional(),
     arrivalTime: time,
     requests: long,
     dietary: long,

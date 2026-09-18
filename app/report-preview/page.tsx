@@ -6,7 +6,6 @@ import {
   Download,
   Leaf,
   MessageCircleMore,
-  Sparkles,
   UsersRound,
 } from "lucide-react";
 import Image from "next/image";
@@ -81,7 +80,7 @@ export default function CustomerReportPreview() {
               <p>Nearly half of all portions ordered were vegetarian or centred on seasonal produce.</p>
             </article>
             <article>
-              <span className="customer-report-icon"><Sparkles size={20} /></span>
+              <span className="customer-report-icon"><Check size={20} /></span>
               <strong>100%</strong>
               <h3>Dietaries covered</h3>
               <p>Every recorded allergy and dietary requirement was reviewed before service.</p>

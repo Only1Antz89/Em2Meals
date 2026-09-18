@@ -226,6 +226,12 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                 Food arrival: {o.details.arrivalTime || "To confirm"}
                 <br />
                 Event start: {o.details.eventTime || "To confirm"}
+                {o.details.eventEndTime ? (
+                  <>
+                    <br />
+                    Event end: {o.details.eventEndTime}
+                  </>
+                ) : null}
               </dd>
             </div>
             <div>
@@ -598,6 +604,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                   ["attendees", "Attendees", "number"],
                   ["arrivalTime", "Food arrival", "time"],
                   ["eventTime", "Event start", "time"],
+                  ["eventEndTime", "Event end", "time"],
                   ["venue", "Venue", "text"],
                   ["address", "Address", "text"],
                   ["postcode", "Postcode", "text"],

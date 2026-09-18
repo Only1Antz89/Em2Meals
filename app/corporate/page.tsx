@@ -4,9 +4,18 @@ import { ArrowUpRight, CalendarDays, ClipboardCheck, UsersRound } from "lucide-r
 import { Footer, Header } from "../public-shell";
 
 const services = [
-  ["Breakfasts", "A polished start for briefings, workshops and early team sessions."],
-  ["Working lunches", "Generous, easy-to-serve food planned around your headcount and schedule."],
-  ["Meetings & events", "Considered catering for client days, team moments and company gatherings."],
+  [
+    "Breakfasts",
+    "Kick start your day right by fueling your guests with the right nutrition to keep them focused for the day.",
+  ],
+  [
+    "Working lunches",
+    "Whether it is a sandwich lunch or buffet let us help you by ensuring guests are nourished and engaged.",
+  ],
+  [
+    "Meetings / events",
+    "Let us work with you to cater for client days, team meetings and company gatherings.",
+  ],
 ];
 
 export default function Page() {
@@ -40,10 +49,10 @@ export default function Page() {
         <section className="service-offer">
           <header>
             <span className="section-index">01</span>
-            <h2>Good food, fitted to the agenda.</h2>
+            <h2>Good food added to the agenda.</h2>
             <p>
-              Tell us who you are feeding and how the day is structured. We
-              will help you choose an approach that is practical and inviting.
+              Tell us about your event and we will work together with you
+              ensuring your guests enjoy every last forkful.
             </p>
           </header>
           <div className="service-offer__list">
@@ -61,14 +70,33 @@ export default function Page() {
             <span className="section-index">02</span>
             <h2>Professional behind the scenes.</h2>
             <p>
-              Reliable catering is as much about organisation as it is about
-              flavour. We keep the practical details visible and agreed.
+              Reliable catering begins with calm organisation. Let us work with
+              you to keep the details practical and professional.
             </p>
           </div>
           <div className="corporate-operations__grid">
-            <article><CalendarDays aria-hidden="true" /><h3>Planned to time</h3><p>Delivery windows and venue access agreed before the day.</p></article>
-            <article><UsersRound aria-hidden="true" /><h3>Made for the team</h3><p>Headcounts, preferences and dietary needs kept together.</p></article>
-            <article><ClipboardCheck aria-hidden="true" /><h3>Clear to reorder</h3><p>Useful order records make repeat catering easier to plan.</p></article>
+            <article>
+              <CalendarDays aria-hidden="true" />
+              <h3>Planned to time</h3>
+              <p>Delivery windows agreed in advance.</p>
+            </article>
+            <article>
+              <UsersRound aria-hidden="true" />
+              <h3>Made with you in mind</h3>
+              <p>
+                We tailor our food and services to each client and event. With
+                special care and consideration taken for guests with allergies,
+                specific dietary requirements and intolerances.
+              </p>
+            </article>
+            <article>
+              <ClipboardCheck aria-hidden="true" />
+              <h3>Ordering</h3>
+              <p>
+                Order with ease by completing the enquiry form and one of our
+                team will get back to you.
+              </p>
+            </article>
           </div>
         </section>
 

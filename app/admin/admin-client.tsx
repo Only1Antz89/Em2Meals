@@ -9,7 +9,6 @@ import {
   Truck,
   Users,
   BarChart3,
-  Sparkles,
   Settings,
   ArrowUpRight,
   Plus,

@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useRef, useState, useTransition, type ComponentType, type ReactNode } from "react";
 import Image from "next/image";
-import { Beef, Check, ChefHat, CircleDollarSign, Droplets, Egg, Fish, ImagePlus, Leaf, ListChecks, Milk, PackageCheck, Pencil, Plus, Search, Sparkles, Sprout, Upload, Utensils, Wheat, X } from "lucide-react";
+import { Beef, Check, ChefHat, CircleDollarSign, Droplets, Egg, Fish, Flame, ImagePlus, Leaf, ListChecks, Milk, PackageCheck, Pencil, Plus, Search, Sprout, Upload, Utensils, Wheat, X } from "lucide-react";
 import { ingredientAvailable, ingredientPrice, money, normaliseRecipeMeasurement, recipeCurrentCost, recipeUnits, today, type Ingredient, type Recipe, type RecipeLine, type RecipeUnit } from "@/lib/domain";
 import { seasons } from "@/lib/operations";
 import { useOps } from "./ops-context";
@@ -11,7 +11,7 @@ import { Field, Pick } from "@/components/form-controls";
 import { Button } from "@/components/ui/button";
 
 type Icon = ComponentType<{ size?: number; strokeWidth?: number }>;
-const categoryIcons: Record<string, Icon> = { meat: Beef, poultry: ChefHat, "fish & seafood": Fish, vegetables: Leaf, fruit: Sprout, carbohydrates: Wheat, bakery: Wheat, dairy: Milk, eggs: Egg, herbs: Leaf, spices: Sparkles, condiments: Droplets, "oils & fats": Droplets, liquids: Droplets, "plant proteins": Sprout, other: PackageCheck };
+const categoryIcons: Record<string, Icon> = { meat: Beef, poultry: ChefHat, "fish & seafood": Fish, vegetables: Leaf, fruit: Sprout, carbohydrates: Wheat, bakery: Wheat, dairy: Milk, eggs: Egg, herbs: Leaf, spices: Flame, condiments: Droplets, "oils & fats": Droplets, liquids: Droplets, "plant proteins": Sprout, other: PackageCheck };
 const seasonCopy: Record<(typeof seasons)[number], string> = { Spring: "Fresh starts, lighter plates", Summer: "Sun-ripened flavours", Autumn: "Warm, comforting dishes", Winter: "Hearty food, colder days" };
 
 export function DishImage({ src, name }: { src?: string; name: string }) {

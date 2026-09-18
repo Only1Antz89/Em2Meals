@@ -112,20 +112,23 @@ export default function Home() {
             <h2>
               Fork Goodness Baked.
               <br />
-              <em>Anything but ordinary.</em>
+              <em>About us.</em>
             </h2>
           </div>
           <div className="home-story__body">
             <p>
-              Some meals hold a milestone. Others give a working day its
-              rhythm. Both deserve food made with purpose.
+              At Fork Goodness Baked we take pride in tailoring our food and
+              service to meet client&apos;s needs. We are passionate about food
+              and we work with our suppliers sourcing the freshest and finest
+              ingredients to deliver exceptional dishes.
             </p>
             <p>
-              Fork Goodness Baked is a Black-owned, independent London business bringing
-              people together through generous food and considered service.
+              We are an independent business operating in London and the South
+              East bringing people together through good food which is savoured
+              right down to the last forkful.
             </p>
             <span className="location-line">
-              <MapPin aria-hidden="true" size={17} /> London
+              <MapPin aria-hidden="true" size={17} /> London &amp; the South East
             </span>
           </div>
         </section>

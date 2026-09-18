@@ -45,13 +45,37 @@ export function Brand({
 
 export function Header({
   variant = "light",
+  active,
 }: {
   variant?: "light" | "overlay";
-  active?: "private" | "corporate";
+  active?: "private" | "corporate" | "about";
 }) {
   return (
     <header className={`site-header site-header--${variant}`}>
       <Brand inverse={variant === "overlay"} />
+      <nav aria-label="Main navigation">
+        <Link
+          href="/private-chef"
+          aria-current={active === "private" ? "page" : undefined}
+        >
+          Private dining
+        </Link>
+        <Link
+          href="/corporate"
+          aria-current={active === "corporate" ? "page" : undefined}
+        >
+          Corporate catering
+        </Link>
+        <Link
+          href="/about"
+          aria-current={active === "about" ? "page" : undefined}
+        >
+          About us
+        </Link>
+      </nav>
+      <Link href="/enquire" className="header-cta">
+        Enquire
+      </Link>
     </header>
   );
 }
@@ -68,7 +92,7 @@ export function Footer() {
         <nav aria-label="Footer pages">
           <span>Explore</span>
           <Link href="/">Home</Link>
-          <Link href="/#story">Our story</Link>
+          <Link href="/about">About us</Link>
           <Link href="/enquire">Make an enquiry</Link>
         </nav>
         <nav aria-label="Footer services">

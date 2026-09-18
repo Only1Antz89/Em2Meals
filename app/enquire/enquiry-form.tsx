@@ -11,6 +11,7 @@ const initial: Enquiry = {
   attendees: 2,
   date: "",
   eventTime: "",
+  eventEndTime: "",
   arrivalTime: "",
   requests: "",
   dietary: "",
@@ -141,7 +142,7 @@ export default function EnquiryForm() {
                 "Wedding / reception",
                 "Office breakfast",
                 "Office lunch",
-                "Meeting / pitch",
+                "Meeting",
                 "Corporate event",
                 "Other",
               ]}
@@ -168,13 +169,20 @@ export default function EnquiryForm() {
               onChange={(v) => update("eventTime", v)}
             />
             <Field
+              label="Event end time"
+              type="time"
+              value={data.eventEndTime || ""}
+              onChange={(v) => update("eventEndTime", v)}
+            />
+            <Field
               label="Food arrival time"
               type="time"
               value={data.arrivalTime}
               onChange={(v) => update("arrivalTime", v)}
             />
             <Notes
-              label="Requested dishes, theme and service style"
+              label="Requested dishes, service and style"
+              placeholder="Share any preferred dishes, service style (e.g. plated courses, family-style sharing, buffet) or themes you have in mind."
               value={data.requests}
               onChange={(v) => update("requests", v)}
             />

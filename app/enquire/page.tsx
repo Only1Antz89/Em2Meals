@@ -8,15 +8,14 @@ export default function Page() {
         <aside>
           <span className="eyebrow">START A CONVERSATION</span>
           <h1>
-            Tell us about
+            Tell us
             <br />
-            the table you
-            <br />
-            <span className="italic">are planning.</span>
+            <span className="italic">more.</span>
           </h1>
           <p>
-            A dinner at home or lunch for the whole team—share the essentials
-            and we will come back to you with the right next step.
+            A dinner at home or lunch etc—share the essentials by completing the
+            enquiry form so we can work with you to plan the food served at your
+            event.
           </p>
           <div className="enquiry-note">
             LONDON

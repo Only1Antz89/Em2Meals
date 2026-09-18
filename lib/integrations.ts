@@ -76,47 +76,75 @@ export async function gemini(
     throw Error(
       "AutoSous setup required. Your records are saved and can be reviewed manually.",
     );
-  const model = String(c.GEMINI_MODEL || "gemini-3.6-flash");
-  if (!/^[a-zA-Z0-9.-]+$/.test(model))
+  const configuredModel = String(c.GEMINI_MODEL || "gemini-3.5-flash-lite");
+  if (!/^[a-zA-Z0-9.-]+$/.test(configuredModel))
     throw Error("Invalid AutoSous model configuration");
-  const generationConfig: Record<string, unknown> = {
-    temperature: 0.2,
-    maxOutputTokens: 3000,
-    thinkingConfig: { thinkingBudget: 0 },
-  };
-  const body: Record<string, unknown> = {
-    systemInstruction: { parts: [{ text: system }] },
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig,
-  };
-  if (schema)
-    Object.assign(generationConfig, {
-      responseMimeType: "application/json",
-      responseSchema: schema,
-    });
-  if (grounded) body.tools = [{ google_search: {} }];
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  const candidateModels = Array.from(
+    new Set([
+      configuredModel,
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.6-flash",
+    ]),
+  );
+
   let r: Response | undefined;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    r = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": c.GEMINI_API_KEY,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(35000),
-    });
-    if (r.status === 429 && body.tools) {
-      delete body.tools;
-      continue;
+  let lastStatus = 503;
+
+  for (const model of candidateModels) {
+    const generationConfig: Record<string, unknown> = {
+      temperature: 0.2,
+      maxOutputTokens: 3000,
+    };
+    if (!model.includes("flash-lite")) {
+      generationConfig.thinkingConfig = { thinkingBudget: 0 };
     }
-    if (r.ok || !RETRYABLE_GEMINI_STATUSES.has(r.status) || attempt === 2)
-      break;
-    await wait(retryDelay(r, attempt));
+    if (schema) {
+      Object.assign(generationConfig, {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+      });
+    }
+
+    const body: Record<string, unknown> = {
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig,
+    };
+    if (grounded) body.tools = [{ google_search: {} }];
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": c.GEMINI_API_KEY,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(35000),
+      });
+
+      // If search grounding fails specifically due to quota or plan limits (429),
+      // retry immediately without search grounding on the same model.
+      if (r.status === 429 && body.tools) {
+        delete body.tools;
+        continue;
+      }
+
+      if (r.ok || !RETRYABLE_GEMINI_STATUSES.has(r.status)) break;
+      await wait(retryDelay(r, attempt));
+    }
+
+    if (r?.ok) break;
+    lastStatus = r?.status || 503;
+    // If rate-limited or unavailable on this specific model, try the next candidate model
   }
+
   if (!r?.ok) {
-    const status = r?.status || 503;
+    const status = r?.status || lastStatus;
     throw new GeminiIntegrationError(status, geminiFailure(status));
   }
   const j = (await r.json()) as GeminiResponse;

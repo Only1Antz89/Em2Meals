@@ -28,6 +28,9 @@ const schema = z.object({
   theme: z.string(),
   questions: z.array(z.string()),
 });
+
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   try {
     const user = await owner();

@@ -8,6 +8,9 @@ import {
 import { gemini } from "@/lib/integrations";
 import { alerts, needs } from "@/lib/domain";
 import { z } from "zod";
+
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   try {
     if (!(await owner()))

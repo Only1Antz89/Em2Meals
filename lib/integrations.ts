@@ -72,6 +72,7 @@ export async function gemini(
   const generationConfig: Record<string, unknown> = {
     temperature: 0.2,
     maxOutputTokens: 3000,
+    thinkingConfig: { thinkingBudget: 0 },
   };
   const body: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: system }] },

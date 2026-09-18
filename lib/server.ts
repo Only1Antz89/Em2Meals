@@ -10,11 +10,27 @@ declare global {
   var __EM2_TEST_ENV__: Record<string, unknown> | undefined;
 }
 
-export const config = () =>
-  (globalThis.__EM2_TEST_ENV__ || process.env) as Record<
-    string,
-    string | undefined
-  >;
+export const config = () => {
+  if (globalThis.__EM2_TEST_ENV__)
+    return globalThis.__EM2_TEST_ENV__ as Record<
+      string,
+      string | undefined
+    >;
+
+  // Keep production variables as explicit property reads. Next.js can inline
+  // these safely into server bundles, whereas passing the process.env object
+  // through indirectly can leave serverless functions with an empty shim.
+  return {
+    CRON_SECRET: process.env.CRON_SECRET,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
+    GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
+    OWNER_EMAILS: process.env.OWNER_EMAILS,
+    OWNER_IDS: process.env.OWNER_IDS,
+    SMTP2GO_API_KEY: process.env.SMTP2GO_API_KEY,
+  } satisfies Record<string, string | undefined>;
+};
 export function database() {
   return getDb();
 }

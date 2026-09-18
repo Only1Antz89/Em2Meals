@@ -397,7 +397,12 @@ export function OrderVenue({ order: o }: { order: Order }) {
       action={
         <Button
           variant="outline"
-          disabled={busy}
+          disabled={busy || !integrations.gemini}
+          title={
+            !integrations.gemini
+              ? "Gemini is not available in this deployment"
+              : undefined
+          }
           onClick={() => research(true)}
         >
           Refresh research
@@ -695,7 +700,7 @@ export function SupplierInsights({
   selectedSupplierId?: string;
   onSelectSupplier?: (supplierId: string) => void;
 }) {
-  const { s, api, run, open, busy } = useOps();
+  const { s, api, run, open, busy, integrations } = useOps();
   const [result, setResult] = useState<{
       supplierId: string;
       research: Research;
@@ -962,7 +967,12 @@ export function SupplierInsights({
                 <Button
                   className="supplier-research"
                   variant="outline"
-                  disabled={busy}
+                  disabled={busy || !integrations.gemini}
+                  title={
+                    !integrations.gemini
+                      ? "Gemini is not available in this deployment"
+                      : undefined
+                  }
                   onClick={async () => {
                     try {
                       setError("");

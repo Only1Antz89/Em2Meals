@@ -1936,7 +1936,15 @@ function Assistant() {
               value={question}
               onChange={setQuestion}
             />
-            <Button disabled={busy || !question} className="mt-4">
+            <Button
+              disabled={busy || !question || !integrations.gemini}
+              title={
+                !integrations.gemini
+                  ? "Gemini is not available in this deployment"
+                  : undefined
+              }
+              className="mt-4"
+            >
               {busy ? "Looking into it…" : "Ask Gemini"}
               <ArrowRight size={16} />
             </Button>
@@ -1970,7 +1978,12 @@ function Assistant() {
             }))}
           />
           <Button
-            disabled={!venue || busy}
+            disabled={!venue || busy || !integrations.gemini}
+            title={
+              !integrations.gemini
+                ? "Gemini is not available in this deployment"
+                : undefined
+            }
             onClick={async () => {
               setError("");
               try {

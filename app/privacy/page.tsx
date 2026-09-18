@@ -19,7 +19,7 @@ export default function Page() {
         </p>
         <h2>Connected services</h2>
         <p>
-          When configured, Google Gemini helps the owner review requests and
+          When configured, AutoSous helps the owner review requests and
           Google Maps supports venue and journey planning. Email delivery uses
           SMTP2GO. The owner reviews dietary decisions and outgoing emails.
           Public venue searches do not include guest names or allergy details.

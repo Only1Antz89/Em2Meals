@@ -63,7 +63,7 @@ Neon Postgres tables store original enquiries, email send claims and separate li
 
 Confirmed orders retain item and ingredient cost snapshots. Reservation uses dated eligible batches in expiry order. Preparation and cooking retain reservations. Packaging atomically deducts actual usage and releases reservations exactly once. Extra usage updates reserve additional ingredients immediately. Cancellation before preparation releases stock; prepared/cooked orders require consumed-versus-reusable reconciliation. Legacy records already marked consumed cannot deduct again. Recipe changes that affect confirmed orders require a replacement recipe/order. Actual waste cost is an allocation of already-recorded costs, not an extra deduction from the ledger. Only stock spoilage deducts stock in the waste workflow.
 
-AI extraction returns structured suggestions and evidence, not approval. Read-only assistant responses use records; venue research uses only venue details with cited public sources. Guest references sent for structured extraction are pseudonymised. Free text may still contain personal data supplied by customers and should be minimised. No model can determine allergen safety, expiry or permits. The owner verifies these.
+AutoSous extraction returns structured suggestions and evidence, not approval. Read-only AutoSous responses use records; venue research uses only venue details with cited public sources. Guest references sent for structured extraction are pseudonymised. Free text may still contain personal data supplied by customers and should be minimised. AutoSous cannot determine allergen safety, expiry or permits. The owner verifies these.
 
 Routing uses Google’s traffic-aware outbound route. A return estimate doubles distance and duration; it is labelled as an estimate. Fuel cost uses UK gallons: miles / MPG × 4.54609 × pounds per litre. Manual estimates remain available. Browser venue maps use a Google Maps iframe.
 
@@ -77,7 +77,7 @@ Client recaps are built from a dedicated projection containing only that custome
 
 The initial deployment is private. Before opening to customers: complete business contact/privacy/retention information, verify chef credentials before award claims, enter real recipes/allergen labels/supplier prices and approved storage instructions, configure and live-test Google/email integrations, and review a real end-to-end order with the owner. API credentials and outgoing communications are not silently substituted with fabricated results.
 
-External API calls have bounded timeouts. Enquiries are saved independently of AI availability. Missing dates prevent stock allocation; freezing never automatically extends expiry. Operational alerts are calculated from persistent records in-app; no background email campaigns run.
+External API calls have bounded timeouts. Enquiries are saved independently of AutoSous availability. Missing dates prevent stock allocation; freezing never automatically extends expiry. Operational alerts are calculated from persistent records in-app; no background email campaigns run.
 
 A page-scoped read-only WebMCP tool, `read_catering_overview`, exposes the current owner workspace counts and alerts where the browser supports it.
 

@@ -15,12 +15,12 @@ const RETRYABLE_GEMINI_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 function geminiFailure(status: number) {
   if (status === 401 || status === 403)
-    return "Gemini authentication failed. Check the server-side API key and its restrictions.";
+    return "AutoSous authentication failed. Check the server-side service key and its restrictions.";
   if (status === 404)
-    return "Gemini model unavailable. Check GEMINI_MODEL in the deployment environment.";
+    return "AutoSous is unavailable. Check its model configuration in the deployment environment.";
   if (status === 429)
-    return "Gemini is temporarily rate limited. Review manually or retry shortly.";
-  return `Gemini request failed (${status}). Review manually or retry.`;
+    return "AutoSous is temporarily rate limited. Review manually or retry shortly.";
+  return `AutoSous request failed (${status}). Review manually or retry.`;
 }
 
 function retryDelay(response: Response) {
@@ -64,11 +64,11 @@ export async function gemini(
   const c = config();
   if (!c.GEMINI_API_KEY)
     throw Error(
-      "Gemini setup required. Your records are saved and can be reviewed manually.",
+      "AutoSous setup required. Your records are saved and can be reviewed manually.",
     );
   const model = String(c.GEMINI_MODEL || "gemini-3.8-flash");
   if (!/^[a-zA-Z0-9.-]+$/.test(model))
-    throw Error("Invalid Gemini model configuration");
+    throw Error("Invalid AutoSous model configuration");
   const generationConfig: Record<string, unknown> = {
     temperature: 0.2,
     maxOutputTokens: 3000,
@@ -111,8 +111,8 @@ export async function gemini(
     const reason = candidate?.finishReason;
     throw Error(
       reason && reason !== "STOP"
-        ? `Gemini returned no usable answer (${reason}). Review manually.`
-        : "Gemini returned no usable answer. Review manually.",
+        ? `AutoSous returned no usable answer (${reason}). Review manually.`
+        : "AutoSous returned no usable answer. Review manually.",
     );
   }
   const sources = (candidate?.groundingMetadata?.groundingChunks || []).flatMap(

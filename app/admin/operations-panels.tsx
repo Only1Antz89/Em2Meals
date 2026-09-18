@@ -400,7 +400,7 @@ export function OrderVenue({ order: o }: { order: Order }) {
           disabled={busy || !integrations.gemini}
           title={
             !integrations.gemini
-              ? "Gemini is not available in this deployment"
+              ? "AutoSous is not available in this deployment"
               : undefined
           }
           onClick={() => research(true)}
@@ -439,7 +439,7 @@ export function OrderVenue({ order: o }: { order: Order }) {
             <p className="empty-state">
               {integrations.gemini
                 ? "Venue research will appear here."
-                : "Gemini setup required. Customer access instructions remain available."}
+                : "AutoSous setup required. Customer access instructions remain available."}
             </p>
           )}
           <h3>Customer access instructions</h3>
@@ -970,7 +970,7 @@ export function SupplierInsights({
                   disabled={busy || !integrations.gemini}
                   title={
                     !integrations.gemini
-                      ? "Gemini is not available in this deployment"
+                      ? "AutoSous is not available in this deployment"
                       : undefined
                   }
                   onClick={async () => {

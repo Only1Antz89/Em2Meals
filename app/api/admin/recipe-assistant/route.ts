@@ -121,7 +121,7 @@ export async function POST(req: Request) {
           !state.ingredients.some((ingredient) => ingredient.id === suggestion.ingredientId),
       )
     )
-      throw Error("Gemini returned an unknown ingredient. Review manually.");
+      throw Error("AutoSous returned an unknown ingredient. Review manually.");
 
     const missing = draft.ingredients.filter((suggestion) => !suggestion.ingredientId);
     let estimates: z.infer<typeof estimateSchema>["estimates"] = [];

@@ -93,7 +93,7 @@ const navigation = [
   ["crm", "CRM", Users],
   ["business", "Business", BarChart3],
   ["reports", "Waste & reports", BarChart3],
-  ["assistant", "AI assistant", Sparkles],
+  ["assistant", "AutoSous", Sparkles],
   ["settings", "Settings", Settings],
 ] as const;
 const inventoryNavigation = [
@@ -1848,7 +1848,7 @@ function SettingsPage() {
           {[
             [
               "gemini",
-              "Gemini AI",
+              "AutoSous",
               "Structured enquiry review and read-only operations help.",
             ],
             [
@@ -1897,8 +1897,8 @@ function Assistant() {
         action={
           <Tag tone={integrations.gemini ? "green" : "amber"}>
             {integrations.gemini
-              ? "Gemini configured"
-              : "Gemini setup required"}
+              ? "AutoSous ready"
+              : "AutoSous setup required"}
           </Tag>
         }
       >
@@ -1940,12 +1940,12 @@ function Assistant() {
               disabled={busy || !question || !integrations.gemini}
               title={
                 !integrations.gemini
-                  ? "Gemini is not available in this deployment"
+                  ? "AutoSous is not available in this deployment"
                   : undefined
               }
               className="mt-4"
             >
-              {busy ? "Looking into it…" : "Ask Gemini"}
+              {busy ? "Looking into it…" : "Ask AutoSous"}
               <ArrowRight size={16} />
             </Button>
           </form>
@@ -1981,7 +1981,7 @@ function Assistant() {
             disabled={!venue || busy || !integrations.gemini}
             title={
               !integrations.gemini
-                ? "Gemini is not available in this deployment"
+                ? "AutoSous is not available in this deployment"
                 : undefined
             }
             onClick={async () => {

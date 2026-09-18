@@ -381,14 +381,14 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
           />
         </Panel>
         <Panel
-          title="Gemini enquiry review"
+          title="AutoSous enquiry review"
           action={
             <Button
               size="sm"
               disabled={busy || !integrations.gemini}
               title={
                 !integrations.gemini
-                  ? "Configure GEMINI_API_KEY in environment to enable analysis"
+                  ? "Configure AutoSous in the deployment environment to enable analysis"
                   : undefined
               }
               onClick={() => {
@@ -471,7 +471,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
             <div className="empty-state">
               {integrations.gemini
                 ? "Extract suggested meals, quantities and questions from the original request."
-                : "Gemini setup required. The original request is saved and available for manual review."}
+                : "AutoSous setup required. The original request is saved and available for manual review."}
             </div>
           )}
           <p className="panel-note">

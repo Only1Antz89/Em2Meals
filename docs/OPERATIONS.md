@@ -4,7 +4,7 @@
 
 Website submissions remain stored independently of conversion. The importer matches trimmed, case-normalised emails without replacing CRM notes or contact details. Import status allows safe retry after interruptions. A submission request key cannot be reused with different content. Sample workspaces never import public enquiries.
 
-New orders receive `EM-YYYY-NNNNNN` references inside the revision-checked transaction. Existing references remain unchanged. Gemini can suggest recipe matches and quantities; the owner applies and reviews them before accepting. Allergy checks remain an explicit owner step.
+New orders receive `EM-YYYY-NNNNNN` references inside the revision-checked transaction. Existing references remain unchanged. AutoSous can suggest recipe matches and quantities; the owner applies and reviews them before accepting. Allergy checks remain an explicit owner step.
 
 Venue selection saves identity, coordinates, address, postcode/locality and a map link. Manual address corrections remain available. Changing a selected venue or address invalidates its location selection; event-date/time changes mark research stale. Venue research, customer access instructions, parking and journey planning share one panel while customer-supplied instructions remain distinct from public research. Research looks for parking restrictions, payment systems such as RingGo or PayByPhone, published tariffs, loading and accessibility, with source links, timestamps and nearby car-park map links. The journey estimate calculates traffic-aware outbound and return legs around the expected venue stay and uses a published hourly parking rate and known daily cap when available; all estimates remain editable and unknown or unverified facts require manual confirmation.
 
@@ -22,7 +22,7 @@ Expiry counts calendar days in Europe/London and refreshes at London midnight an
 
 Supplier profiles support named contacts, roles, website, address, logo and business details. Research is a suggestion: confirm the business match before applying it. Ingredient offerings capture preferred/alternative suppliers, packs and known prices/VAT, combined with supplier delivery charges, minimum order and estimated calendar-day lead times.
 
-Business → Purchasing combines accepted-order shortages per supplier. Confirmed purchases are allocated once to demand their ETA can meet; overdue deliveries remain visible. Quantities round to packs. Proposals show affected orders, required amounts, purchase quantities, costs, delivery estimates and ordering deadlines. Unknown prices/VAT remain unknown. Supplier history and related recipes explain likely next orders; AI must not invent prices or availability.
+Business → Purchasing combines accepted-order shortages per supplier. Confirmed purchases are allocated once to demand their ETA can meet; overdue deliveries remain visible. Quantities round to packs. Proposals show affected orders, required amounts, purchase quantities, costs, delivery estimates and ordering deadlines. Unknown prices/VAT remain unknown. Supplier history and related recipes explain likely next orders; AutoSous must not invent prices or availability.
 
 Review and edit supplier drafts before sending. Changes to demand, stock, offerings or incoming purchases mark a draft Needs updating; review its differences and regenerate it. The server verifies freshness again while holding a workspace send lease. Network-uncertain deliveries require checking the provider and recording the result. A sent request is not a confirmed purchase. Confirm supplier quantities, cost and ETA, or record a manual purchase, then receive the actual delivery. Subsequent demand becomes a new or amended request after resolving the previous request.
 
@@ -61,7 +61,7 @@ Four Recharts SVG panels show monthly sales/cash, service activity, cost composi
 
 Run all checked-in Postgres migrations with the direct `DATABASE_URL_UNPOOLED` connection. Application requests continue using the pooled `DATABASE_URL`. Schema creation and upgrades happen only through migrations; request handlers never need DDL permissions. Versioned JSON normalisation writes an original-state backup in `workspace_backups` before advancing to v4, preserving the prior workspace and revision. Prior version backups remain intact. Single-supplier ingredient links become preferred offerings. Existing `consumed` flags, references, quotes and stock history are retained. Never clear a legacy consumed flag to re-run packaging.
 
-Before rollout, retain the database backup and inspect both live/sample records. Business identity, VAT treatment and real data still require owner setup. Gemini, Google Places/Routes and Resend require server-side credentials and provider configuration. No live provider result or email delivery is fabricated when credentials are missing. No deployment is performed by the verification scripts.
+Before rollout, retain the database backup and inspect both live/sample records. Business identity, VAT treatment and real data still require owner setup. AutoSous, Google Places/Routes and Resend require server-side credentials and provider configuration. No live provider result or email delivery is fabricated when credentials are missing. No deployment is performed by the verification scripts.
 
 ## Verification
 

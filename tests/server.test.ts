@@ -510,7 +510,7 @@ test("Gemini retries transient failures and gives actionable setup errors", asyn
     globalThis.fetch = async () => new Response("missing", { status: 404 });
     await assert.rejects(
       gemini("Question", "System"),
-      /Check GEMINI_MODEL in the deployment environment/,
+      /Check its model configuration in the deployment environment/,
     );
   } finally {
     globalThis.fetch = originalFetch;

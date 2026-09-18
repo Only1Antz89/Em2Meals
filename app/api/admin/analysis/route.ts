@@ -99,7 +99,7 @@ export async function POST(req: Request) {
         (m) => m.recipeId && !state.recipes.some((r) => r.id === m.recipeId),
       )
     )
-      throw Error("Gemini returned an unknown recipe. Review manually.");
+      throw Error("AutoSous returned an unknown recipe. Review manually.");
     return Response.json(
       await command(
         p.mode,

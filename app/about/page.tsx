@@ -90,8 +90,8 @@ export default function AboutPage() {
         <section className="service-editorial">
           <div className="service-editorial__image">
             <Image
-              src="/images/food-prep.jpg"
-              alt="Fresh vibrant vegetables being washed under running water in the kitchen"
+              src="/images/desserts.jpg"
+              alt="Handcrafted artisanal desserts, fresh berry tart and chocolate cake on ceramic plates"
               fill
               sizes="(max-width: 800px) 100vw, 48vw"
             />

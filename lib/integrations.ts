@@ -66,7 +66,7 @@ export async function gemini(
     throw Error(
       "AutoSous setup required. Your records are saved and can be reviewed manually.",
     );
-  const model = String(c.GEMINI_MODEL || "gemini-3.8-flash");
+  const model = String(c.GEMINI_MODEL || "gemini-3.6-flash");
   if (!/^[a-zA-Z0-9.-]+$/.test(model))
     throw Error("Invalid AutoSous model configuration");
   const generationConfig: Record<string, unknown> = {

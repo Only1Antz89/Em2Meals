@@ -43,7 +43,7 @@ Use **Vercel project environment variables** for production values; local `.env`
 | `DATABASE_URL_UNPOOLED` | Direct Neon connection used only for migrations and administrative work.    |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob credential used for owner recipe-image uploads.                 |
 | `GEMINI_API_KEY`      | Server-side Gemini API credential.                                            |
-| `GEMINI_MODEL`        | Defaults to `gemini-3.8-flash`; set a supported model for the Google project. |
+| `GEMINI_MODEL`        | Defaults to `gemini-3.6-flash`; set a supported model for the Google project. |
 | `GOOGLE_MAPS_API_KEY` | Server-side key with Places API (New) and Routes API enabled.                 |
 | `SMTP2GO_API_KEY`     | SMTP2GO API credential with `/email/send` permission.                         |
 | `EMAIL_FROM`          | Verified business sender, e.g. `Fork Goodness Baked <hello@your-domain.example>`. |

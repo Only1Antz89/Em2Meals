@@ -107,6 +107,10 @@ export async function gemini(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(35000),
     });
+    if (r.status === 429 && body.tools) {
+      delete body.tools;
+      continue;
+    }
     if (r.ok || !RETRYABLE_GEMINI_STATUSES.has(r.status) || attempt === 2)
       break;
     await wait(retryDelay(r, attempt));

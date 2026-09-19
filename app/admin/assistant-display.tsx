@@ -298,25 +298,37 @@ export function AutoSousFormattedAnswer({
             case "key_value_list":
               return (
                 <div key={idx} className="autosous-kv-grid">
-                  {block.items.map((item, itemIdx) => (
-                    <div key={itemIdx} className="autosous-kv-row">
-                      <span className="autosous-kv-label">
-                        {parseInline(item.label)}
-                      </span>
-                      <div className="autosous-kv-value-wrap">
-                        {item.value && (
-                          <span className="autosous-kv-value-pill">
-                            {parseInline(item.value)}
-                          </span>
-                        )}
-                        {item.note && (
-                          <span className="autosous-kv-note">
-                            {item.note}
-                          </span>
-                        )}
+                  {block.items.map((item, itemIdx) => {
+                    const isLong = item.value && (item.value.length > 35 || item.value.includes("."));
+                    return (
+                      <div
+                        key={itemIdx}
+                        className={`autosous-kv-row ${isLong ? "is-stacked" : ""}`}
+                      >
+                        <span className="autosous-kv-label">
+                          {parseInline(item.label)}
+                        </span>
+                        <div className="autosous-kv-value-wrap">
+                          {item.value && (
+                            isLong ? (
+                              <p className="autosous-kv-value-text">
+                                {parseInline(item.value)}
+                              </p>
+                            ) : (
+                              <span className="autosous-kv-value-pill">
+                                {parseInline(item.value)}
+                              </span>
+                            )
+                          )}
+                          {item.note && (
+                            <span className="autosous-kv-note">
+                              {item.note}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             case "list":
@@ -422,3 +434,5 @@ export function AutoSousRateLimitAlert({
     </div>
   );
 }
+
+export { VenueResearchDisplay } from "./venue-research-display";

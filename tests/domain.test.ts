@@ -1024,3 +1024,96 @@ test("inclusive invoice preserves accepted totals and issued records cannot edit
 });
 
 import "./reporting.test";
+
+import { liveMenu, publicMenu, generateMenu, type Menu } from "../lib/menu";
+import type { State } from "../lib/domain";
+import { assertStateIntegrity } from "../lib/state-integrity";
+import { normaliseState as normaliseMenus } from "../lib/operations";
+const dishNames = (menu: Menu) => menu.sections.flatMap((x) => x.items.map((i) => i.name));
+const menuYear = Number(today().slice(0, 4));
+test("menu generation uses only active recipes in the chosen season and year", () => {
+  let s: State = sampleState();
+  s.menus = [];
+  s = act(s, "recipe", { ...s.recipes[0], id: undefined, name: "Draft special", status: "draft" });
+  s = act(s, "recipe", {
+    ...s.recipes[0],
+    id: undefined,
+    name: "Winter stew",
+    status: "active",
+    collections: [{ year: menuYear, season: "Winter" }],
+  });
+  s = act(s, "menu-generate", { year: menuYear, season: "Summer" });
+  const menu = s.menus[0];
+  const names = dishNames(menu);
+  assert.ok(names.includes("House beef burger"));
+  assert.ok(!names.includes("Draft special"));
+  assert.ok(!names.includes("Winter stew"));
+  assert.deepEqual(
+    menu.sections.map((x) => x.title),
+    ["Starters & sides", "Mains", "Desserts"].filter((t) =>
+      menu.sections.some((x) => x.title === t),
+    ),
+  );
+  assert.throws(() => act(s, "menu-generate", { year: menuYear, season: "Summer" }), /already exists/);
+  assert.throws(() => act(s, "menu-generate", { year: menuYear, season: "Spring" }), /No active recipes/);
+  assertStateIntegrity(s);
+});
+test("published menus are frozen public projections without costs or recipe ids", () => {
+  let s: State = sampleState();
+  const published = liveMenu(s)!;
+  assert.ok(published, "sample workspace publishes a Summer menu");
+  const html = JSON.stringify(published);
+  assert.ok(!/recipeId|packCost|cost/i.test(html));
+  assert.ok(published.showPrices);
+  const menu = s.menus[0];
+  const unused = s.recipes.find(
+    (r) => !s.orders.some((o) => o.items.some((i) => i.recipeId === r.id)),
+  );
+  s = act(s, "recipe", { ...unused, name: "Renamed dish" });
+  assert.ok(!JSON.stringify(liveMenu(s)).includes("Renamed dish"));
+  s = act(s, "menu-save", { ...s.menus[0], title: "Draft title" });
+  assert.equal(liveMenu(s)!.title, published.title, "edits do not change the live menu");
+  s = act(s, "menu-publish", { id: menu.id });
+  assert.equal(liveMenu(s)!.title, "Draft title");
+  const hidden = publicMenu({ ...s.menus[0], showPrices: false });
+  assert.ok(hidden.sections.every((x) => x.items.every((i) => i.price === null)));
+  s = act(s, "menu-unpublish", { id: menu.id });
+  assert.equal(liveMenu(s), null);
+});
+test("only one menu is live and sync keeps owner edits", () => {
+  let s: State = sampleState();
+  const summer = s.menus[0];
+  s = act(s, "recipe", {
+    ...s.recipes[0],
+    id: undefined,
+    name: "Autumn soup",
+    collections: [{ year: menuYear, season: "Autumn" }],
+  });
+  s = act(s, "menu-generate", { year: menuYear, season: "Autumn" });
+  const autumn = s.menus.find((m) => m.season === "Autumn")!;
+  s = act(s, "menu-publish", { id: autumn.id });
+  assert.equal(s.menus.filter((m) => m.published).length, 1);
+  assert.equal(liveMenu(s)!.season, "Autumn");
+  const edited = structuredClone(s.menus.find((m) => m.id === summer.id)!);
+  edited.sections[0].items[0].name = "Owner's name";
+  s = act(s, "menu-save", edited);
+  s = act(s, "recipe", {
+    ...s.recipes[0],
+    id: undefined,
+    name: "Summer tart",
+    collections: [{ year: menuYear, season: "Summer" }],
+  });
+  s = act(s, "menu-sync", { id: summer.id });
+  const synced = s.menus.find((m) => m.id === summer.id)!;
+  const names = dishNames(synced);
+  assert.ok(names.includes("Owner's name"));
+  assert.ok(names.includes("Summer tart"));
+  assert.throws(() => act(s, "menu-save", { ...edited, theme: { ...edited.theme, heroImageUrl: "javascript:alert(1)" } }), /Images must be uploaded/);
+});
+test("older workspaces without menus normalise and generation is pure", () => {
+  const s = emptyState() as Partial<State>;
+  delete s.menus;
+  normaliseMenus(s as State);
+  assert.deepEqual(s.menus, []);
+  assert.equal(generateMenu(sampleState(), menuYear, "Summer").sections.length > 0, true);
+});

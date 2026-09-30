@@ -519,5 +519,28 @@ export function sampleState(): State {
       dueDate,
       status: "open",
     });
+  run("menu-generate", { year: Number(today().slice(0, 4)), season: "Summer" });
+  const menu = s.menus.at(-1)!;
+  const prices: Record<string, number> = {
+    "House beef burger": 1450,
+    "Grilled lemon chicken": 1650,
+    "Summer garden salad": 850,
+    "Tomato & basil soup": 750,
+    "Grilled halloumi skewers": 950,
+    "Berry Eton mess": 800,
+  };
+  const content = {
+    ...menu,
+    showPrices: true,
+    sections: menu.sections.map((section) => ({
+      ...section,
+      items: section.items.map((item) => ({
+        ...item,
+        price: prices[item.name] ?? null,
+      })),
+    })),
+  };
+  run("menu-save", content);
+  run("menu-publish", { id: menu.id });
   return s;
 }

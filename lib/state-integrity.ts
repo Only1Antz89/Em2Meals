@@ -69,6 +69,7 @@ export function assertStateIntegrity(state: State) {
   ids(state.drafts, "drafts");
   const journeys = ids(state.journeys, "journeys");
   const invoices = ids(state.invoices, "invoices");
+  ids(state.menus || [], "menus");
 
   for (const recipe of state.recipes)
     for (const line of recipe.lines)

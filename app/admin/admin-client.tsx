@@ -18,6 +18,7 @@ import {
   ArrowRight,
   Send,
   ChevronUp,
+  BookOpen,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -71,6 +72,7 @@ import {
   type Recipe,
 } from "@/lib/domain";
 import OrderPanel from "./order-panel";
+import MenuStudio from "./menu-studio";
 import BusinessHub from "./business-hub";
 import WasteReports from "./waste-reports";
 import CRM from "./crm";
@@ -93,6 +95,7 @@ const navigation = [
   ["", "Overview", LayoutDashboard],
   ["orders", "Enquiries & orders", ClipboardList],
   ["recipes", "Recipes & costing", Utensils],
+  ["menu", "Menu", BookOpen],
   ["inventory", "Inventory", Package],
   ["suppliers", "Suppliers", Truck],
   ["crm", "CRM", Users],
@@ -754,6 +757,8 @@ export default function Admin({
               )
             ) : page === "recipes" ? (
               <Recipes />
+            ) : page === "menu" ? (
+              <MenuStudio />
             ) : page === "inventory" && inventoryPage ? (
               <Inventory view={inventoryPage[0] || "overview"} />
             ) : page === "suppliers" ? (

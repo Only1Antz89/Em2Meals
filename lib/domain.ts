@@ -5,6 +5,7 @@ import {
   industries,
 } from "./reporting";
 import { z } from "zod";
+import { type Menu, menuCommand } from "./menu";
 import {
   type OperationsState,
   type Place,
@@ -190,6 +191,7 @@ export type Order = {
 };
 export type State = OperationsState & {
   journeys: Journey[];
+  menus: Menu[];
   settings: {
     priceMode?: "exclusive" | "inclusive";
     warningDays?: number;
@@ -352,6 +354,7 @@ export function emptyState(): State {
   return {
     schemaVersion: 5,
     journeys: [],
+    menus: [],
     offerings: [],
     invoices: [],
     sequences: {},
@@ -1645,6 +1648,7 @@ export function applyCommand(
     default: {
       const result =
         applyOperations(s, command.type, p, at) ??
+        menuCommand(s, command.type, p, at) ??
         reportingCommand(s, command.type, p);
       if (result === undefined) throw Error("Unknown action");
       target = result;

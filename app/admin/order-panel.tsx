@@ -614,7 +614,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                     key={k}
                     label={label}
                     type={type}
-                    value={(edit.details as any)[k]}
+                    value={(edit.details as any)[k] ?? ""}
                     onChange={(v) =>
                       setEdit({
                         ...edit,
@@ -635,7 +635,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                   <Notes
                     key={k}
                     label={label}
-                    value={(edit.details as any)[k]}
+                    value={(edit.details as any)[k] ?? ""}
                     onChange={(v) =>
                       setEdit({ ...edit, details: { ...edit.details, [k]: v } })
                     }

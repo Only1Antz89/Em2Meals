@@ -231,9 +231,10 @@ function openFollowUpEditor(
       {
         key: "orderId",
         label: "Related enquiry or order",
-        options: orders
-          .filter((order) => !selectedId || order.customerId === selectedId)
-          .map((order) => ({ value: order.id, label: order.reference })),
+        options: (values) =>
+          orders
+            .filter((order) => !values.customerId || order.customerId === values.customerId)
+            .map((order) => ({ value: order.id, label: order.reference })),
       },
       { key: "dueDate", label: "Due date", type: "date", required: true },
       { key: "note", label: "Next action", type: "textarea", required: true },
@@ -273,9 +274,11 @@ function openFeedbackEditor(
       {
         key: "orderId",
         label: "Order",
-        options: orders
-          .filter((order) => !customerId || order.customerId === customerId)
-          .map((order) => ({ value: order.id, label: order.reference })),
+        options: (values) =>
+          orders
+            .filter((order) => !values.customerId || order.customerId === values.customerId)
+            .map((order) => ({ value: order.id, label: order.reference })),
+        required: true,
       },
       { key: "rating", label: "Rating (1–5)", type: "number" },
       { key: "date", label: "Date", type: "date" },

@@ -13,15 +13,20 @@ export function Pick({
   value,
   onChange,
   options,
+  required = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: (string | { value: string; label: string })[];
+  required?: boolean;
 }) {
   return (
     <label className="field">
-      <span>{label}</span>
+      <span>
+        {label}
+        {required ? " *" : ""}
+      </span>
       <Select
         value={value || "__empty"}
         onValueChange={(v) => {
@@ -91,22 +96,28 @@ export function Notes({
   onChange,
   placeholder,
   hint,
+  required = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   hint?: string;
+  required?: boolean;
 }) {
   return (
     <label className="field wide">
-      <span>{label}</span>
+      <span>
+        {label}
+        {required ? " *" : ""}
+      </span>
       {hint && <small className="field-hint text-xs text-muted-foreground">{hint}</small>}
       <Textarea
         aria-label={label}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        required={required}
         rows={3}
       />
     </label>

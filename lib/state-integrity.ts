@@ -69,6 +69,7 @@ export function assertStateIntegrity(state: State) {
   ids(state.drafts, "drafts");
   const journeys = ids(state.journeys, "journeys");
   const invoices = ids(state.invoices, "invoices");
+  ids(state.menus || [], "menus");
 
   for (const recipe of state.recipes)
     for (const line of recipe.lines)
@@ -135,7 +136,7 @@ export function assertStateIntegrity(state: State) {
   // rather than live referential links.
 
   for (const journey of state.journeys)
-    reference(`journey ${journey.id}`, journey.orderId, orders);
+    reference(`journey ${journey.id}`, journey.orderId, orders, true);
 
   for (const invoice of state.invoices) {
     reference(`invoice ${invoice.id}`, invoice.orderId, orders);

@@ -4,6 +4,7 @@ import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { authMode } from "./auth-mode";
 import { emptyState, type State, type Command, applyCommand } from "./domain";
 import { sampleState } from "./sample";
+import { liveMenu, type PublicMenu } from "./menu";
 import { normaliseState, reconcileStock } from "./operations";
 import { assertStateIntegrity, assertStateShape } from "./state-integrity";
 declare global {
@@ -200,6 +201,16 @@ export async function command(
     throw Error("Another change was saved. Reload and try again.");
   const next = applyCommand(state, c, actor);
   return { state: next, revision: await commitState(mode, next, revision) };
+}
+// Public read: returns only the frozen published menu snapshot, never any
+// other workspace data.
+export async function readPublishedMenu(): Promise<PublicMenu | null> {
+  const row = await database()
+    .prepare("SELECT data FROM workspaces WHERE id=?")
+    .bind("live")
+    .first<{ data: string }>();
+  if (!row) return null;
+  return liveMenu(JSON.parse(row.data) as Pick<State, "menus">);
 }
 export async function readEnquiries() {
   const r = await database()

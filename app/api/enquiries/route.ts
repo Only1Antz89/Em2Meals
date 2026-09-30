@@ -6,6 +6,7 @@ import {
   sameOrigin,
   importEnquiries,
 } from "@/lib/server";
+import { clientIp } from "@/lib/upgrade-server";
 export async function POST(req: Request) {
   try {
     sameOrigin(req);
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
         reference: `ENQ-${existing.id.slice(0, 8).toUpperCase()}`,
       });
     }
-    const ip = req.headers.get("cf-connecting-ip") || "local";
+    const ip = clientIp(req);
     const window = `${ip}:${Math.floor(Date.now() / 3600000)}`;
     const now = new Date();
     const expiresAt = new Date(
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
       .run();
     const rate = await db
       .prepare(
-        "INSERT INTO rate_limits(id,count,expires_at) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=count+1,expires_at=excluded.expires_at RETURNING count",
+        "INSERT INTO rate_limits(id,count,expires_at) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=rate_limits.count+1,expires_at=excluded.expires_at RETURNING count",
       )
       .bind(bucket, expiresAt)
       .first<{ count: number }>();

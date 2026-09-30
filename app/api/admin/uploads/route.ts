@@ -11,6 +11,10 @@ export async function POST(req: Request) {
     if (!(await owner()))
       return errorResponse(Error("Owner access required"), 403);
     sameOrigin(req);
+    if (!process.env.BLOB_READ_WRITE_TOKEN)
+      throw Error(
+        "Image storage setup required. Connect Vercel Blob, or add the image later.",
+      );
 
     const form = await req.formData();
     const file = form.get("file");

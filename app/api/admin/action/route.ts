@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       })
       .parse(await jsonBody(req));
     if (p.command.type === "analysis") throw Error("Use the analysis endpoint");
-    if (p.command.type === "order" && p.command.payload.enquiryId) {
+    if (p.command.type === "order" && p.command.payload?.enquiryId) {
       if (p.mode !== "live")
         throw Error("Sample data cannot import live enquiries");
       const enquiry = (await readEnquiries()).find(

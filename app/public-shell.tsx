@@ -48,7 +48,7 @@ export function Header({
   active,
 }: {
   variant?: "light" | "overlay";
-  active?: "private" | "corporate" | "about";
+  active?: "private" | "corporate" | "about" | "menu";
 }) {
   return (
     <header className={`site-header site-header--${variant}`}>
@@ -65,6 +65,12 @@ export function Header({
           aria-current={active === "corporate" ? "page" : undefined}
         >
           Corporate catering
+        </Link>
+        <Link
+          href="/menu"
+          aria-current={active === "menu" ? "page" : undefined}
+        >
+          Menu
         </Link>
         <Link
           href="/about"
@@ -92,6 +98,7 @@ export function Footer() {
         <nav aria-label="Footer pages">
           <span>Explore</span>
           <Link href="/">Home</Link>
+          <Link href="/menu">Seasonal menu</Link>
           <Link href="/about">About us</Link>
           <Link href="/enquire">Make an enquiry</Link>
         </nav>

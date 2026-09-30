@@ -695,7 +695,7 @@ export function SupplierInsights({
   selectedSupplierId?: string;
   onSelectSupplier?: (supplierId: string) => void;
 }) {
-  const { s, api, run, open, busy, integrations } = useOps();
+  const { s, api, run, open, busy } = useOps();
   const [result, setResult] = useState<{
       supplierId: string;
       research: Research;

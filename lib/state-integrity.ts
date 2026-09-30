@@ -135,7 +135,7 @@ export function assertStateIntegrity(state: State) {
   // rather than live referential links.
 
   for (const journey of state.journeys)
-    reference(`journey ${journey.id}`, journey.orderId, orders);
+    reference(`journey ${journey.id}`, journey.orderId, orders, true);
 
   for (const invoice of state.invoices) {
     reference(`invoice ${invoice.id}`, invoice.orderId, orders);

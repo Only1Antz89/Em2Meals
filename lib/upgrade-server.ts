@@ -1,10 +1,19 @@
 import { database } from "./server";
+// Vercel sets x-real-ip / x-forwarded-for; cf-connecting-ip covers Cloudflare.
+export function clientIp(req: Request) {
+  return (
+    req.headers.get("x-real-ip") ||
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("cf-connecting-ip") ||
+    "local"
+  );
+}
 export async function rateLimit(req: Request, scope: string, max: number) {
   const now = new Date();
   const expiresAt = new Date(
     Math.floor(now.getTime() / 3600000) * 3600000 + 3600000,
   ).toISOString();
-  const raw = `${scope}:${req.headers.get("cf-connecting-ip") || "local"}:${Math.floor(Date.now() / 3600000)}`;
+  const raw = `${scope}:${clientIp(req)}:${Math.floor(Date.now() / 3600000)}`;
   const hash = Array.from(
     new Uint8Array(
       await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw)),

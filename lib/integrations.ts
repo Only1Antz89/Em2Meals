@@ -42,11 +42,11 @@ function retryDelay(response: Response, attempt = 0) {
 
 const wait = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
-export async function googleJSON(
+export async function googleJSON<T = Record<string, unknown>>(
   url: string,
-  body: any,
+  body: unknown,
   extra: Record<string, string> = {},
-) {
+): Promise<T> {
   const apiKey = config().GOOGLE_MAPS_API_KEY;
   if (!apiKey) throw Error("Google Maps setup required");
   const r = await fetch(url, {
@@ -63,7 +63,7 @@ export async function googleJSON(
     throw Error(
       `Google Maps request failed (${r.status}). Use a manual estimate or retry.`,
     );
-  return r.json() as Promise<any>;
+  return r.json() as Promise<T>;
 }
 export async function gemini(
   prompt: string,

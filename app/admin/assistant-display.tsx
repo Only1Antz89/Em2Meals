@@ -7,7 +7,6 @@ import {
   Calendar,
   ExternalLink,
   Lightbulb,
-  CheckCircle2,
   AlertCircle,
   Info,
   Clock,

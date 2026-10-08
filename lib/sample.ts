@@ -7,7 +7,7 @@ import {
 } from "./domain";
 export function sampleState(): State {
   let s = emptyState();
-  const run = (type: string, payload: any) => {
+  const run = (type: string, payload: unknown) => {
     s = applyCommand(
       s,
       { id: crypto.randomUUID(), type, payload },

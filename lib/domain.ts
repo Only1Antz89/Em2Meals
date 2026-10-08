@@ -44,6 +44,8 @@ export const stages = [
   "ready for delivery",
   "delivered",
 ] as const;
+export type Stage = (typeof stages)[number];
+
 export type Ingredient = {
   category?: (typeof categories)[number];
   id: string;
@@ -135,6 +137,22 @@ export type Quote = {
   notes: string;
   at: string;
 };
+export type OrderAnalysis = {
+  summary: string;
+  meals: {
+    name: string;
+    recipeId: string | null;
+    quantity: number | null;
+    evidence: string;
+  }[];
+  dietary: {
+    reference: string;
+    requirement: string;
+    evidence: string;
+  }[];
+  theme: string;
+  questions: string[];
+};
 export type Order = {
   createdAt?: string;
   statusHistory?: { status: string; at: string }[];
@@ -186,7 +204,7 @@ export type Order = {
     otherCost?: number;
     mapUrl?: string;
   };
-  analysis?: unknown;
+  analysis?: OrderAnalysis | null;
 };
 export type State = OperationsState & {
   journeys: Journey[];
@@ -771,7 +789,7 @@ const recipeSchema = z.object({
     .optional(),
   lines: z.array(recipeLineSchema).min(1).max(100),
 });
-export type Command = { id: string; type: string; payload: any };
+export type Command = { id: string; type: string; payload: unknown };
 export function applyCommand(
   original: State,
   command: Command,
@@ -779,11 +797,12 @@ export function applyCommand(
 ): State {
   if (original.commands.includes(command.id)) return original;
   const s = normaliseState(structuredClone(original)),
-    p = command.payload,
+    p = (command.payload ?? {}) as Record<string, unknown>,
     at = new Date().toISOString();
   let target = "";
   const findOrder = () => {
-    const o = s.orders.find((x) => x.id === p.orderId);
+    const orderId = typeof p.orderId === "string" ? p.orderId : "";
+    const o = s.orders.find((x) => x.id === orderId);
     if (!o) throw Error("Order not found");
     target = o.id;
     return o;
@@ -1030,7 +1049,7 @@ export function applyCommand(
         p.imported === true && actor === "system:enquiry-import"
           ? enquirySchema.innerType().parse(p.details)
           : enquirySchema.parse(p.details);
-      const id = p.orderId || uid();
+      const id = typeof p.orderId === "string" && p.orderId ? p.orderId : uid();
       const o = s.orders.find((x) => x.id === id);
       if (o) editable(o);
       let customer = s.customers.find(
@@ -1096,7 +1115,7 @@ export function applyCommand(
           statusHistory: [{ status: "enquiry", at }],
           reference: nextReference(s, "EM"),
           customerId: customer.id,
-          enquiryId: p.enquiryId,
+          enquiryId: typeof p.enquiryId === "string" ? p.enquiryId : undefined,
           details: cleanDetails,
           status: "enquiry",
           items,
@@ -1237,8 +1256,8 @@ export function applyCommand(
         if (o.status !== "cooked") throw Error("Mark cooked first");
         consumeOrder(s, o, at);
       } else if (
-        stages.indexOf(next as any) !==
-        stages.indexOf(o.status as any) + 1
+        stages.indexOf(next as Stage) !==
+        stages.indexOf(o.status as Stage) + 1
       )
         throw Error("Follow the next preparation stage");
       o.status = next;
@@ -1639,7 +1658,7 @@ export function applyCommand(
     }
     case "analysis": {
       const o = findOrder();
-      o.analysis = p.analysis;
+      o.analysis = (p.analysis as OrderAnalysis | null | undefined) ?? null;
       break;
     }
     default: {

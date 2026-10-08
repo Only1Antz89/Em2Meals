@@ -10,7 +10,19 @@ export async function searchPlaces(query: string): Promise<Place[]> {
     .bind(key, new Date().toISOString())
     .first<{ data: string }>();
   if (cached) return JSON.parse(cached.data);
-  const result = await googleJSON(
+  type GooglePlace = {
+    id: string;
+    displayName?: { text: string };
+    formattedAddress?: string;
+    location: { latitude: number; longitude: number };
+    googleMapsUri?: string;
+    addressComponents?: {
+      longText: string;
+      shortText?: string;
+      types: string[];
+    }[];
+  };
+  const result = await googleJSON<{ places?: GooglePlace[] }>(
     "https://places.googleapis.com/v1/places:searchText",
     {
       textQuery: query,

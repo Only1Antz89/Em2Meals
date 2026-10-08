@@ -23,7 +23,15 @@ import {
 import { Field, Notes, Pick } from "@/components/form-controls";
 import { Panel, GridTable, Tag, draftFields } from "./admin-client";
 import { useOps } from "./ops-context";
-import { money, recipeCost, needs, stages, type Order } from "@/lib/domain";
+import {
+  money,
+  recipeCost,
+  needs,
+  stages,
+  type Order,
+  type Attendee,
+  type Stage,
+} from "@/lib/domain";
 export default function OrderPanel({ orderId }: { orderId: string }) {
   const { s, run, api, href, busy, open, integrations } = useOps();
   const o = s.orders.find((x) => x.id === orderId);
@@ -31,7 +39,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
     [analysisError, setAnalysisError] = useState(""),
     [cancel, setCancel] = useState(false),
     [edit, setEdit] = useState<Order | null>(null),
-    [review, setReview] = useState<any[] | null>(null),
+    [review, setReview] = useState<Attendee[] | null>(null),
     [reviewConfirmed, setReviewConfirmed] = useState(false);
   if (!o)
     return (
@@ -40,7 +48,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
       </Panel>
     );
   const order = o;
-  const safe = async (fn: () => Promise<any>) => {
+  const safe = async (fn: () => Promise<unknown>) => {
     setError("");
     try {
       await fn();
@@ -70,7 +78,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
   const next =
     o.status === "confirmed" || o.status === "ingredients needed"
       ? "ingredients ready"
-      : stages[stages.indexOf(o.status as any) + 1];
+      : stages[stages.indexOf(o.status as Stage) + 1];
   return (
     <>
       <a className="back-link" href={href("orders")}>
@@ -193,7 +201,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
       <div className="stage-track">
         {stages.map((status, i) => (
           <div
-            className={i <= stages.indexOf(o.status as any) ? "reached" : ""}
+            className={i <= stages.indexOf(o.status as Stage) ? "reached" : ""}
             key={status}
           >
             <span>{i + 1}</span>
@@ -415,9 +423,9 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
           )}
           {o.analysis ? (
             <div className="analysis-result">
-              <p>{(o.analysis as any).summary}</p>
+              <p>{o.analysis.summary}</p>
               <h3>Suggested meals</h3>
-              {(o.analysis as any).meals?.map((m: any, i: number) => (
+              {o.analysis.meals?.map((m, i: number) => (
                 <p key={i}>
                   <b>{m.name}</b> · {m.quantity ?? "Quantity unclear"}
                   <small className="subtext">Evidence: {m.evidence}</small>
@@ -455,7 +463,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                   </Button>
                 )}
               <h3>Dietary observations</h3>
-              {(o.analysis as any).dietary?.map((d: any, i: number) => (
+              {o.analysis.dietary?.map((d, i: number) => (
                 <p key={i}>
                   {d.reference}: {d.requirement}
                   <small className="subtext">Evidence: {d.evidence}</small>
@@ -463,7 +471,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
               ))}
               <h3>Questions to resolve</h3>
               <ul>
-                {(o.analysis as any).questions?.map((q: string) => (
+                {o.analysis.questions?.map((q: string) => (
                   <li key={q}>{q}</li>
                 ))}
               </ul>
@@ -609,38 +617,44 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                   ["address", "Address", "text"],
                   ["postcode", "Postcode", "text"],
                   ["locality", "Locality", "text"],
-                ].map(([k, label, type]) => (
-                  <Field
-                    key={k}
-                    label={label}
-                    type={type}
-                    value={(edit.details as any)[k]}
-                    onChange={(v) =>
-                      setEdit({
-                        ...edit,
-                        details: {
-                          ...edit.details,
-                          [k]: type === "number" ? Number(v) : v,
-                        },
-                      })
-                    }
-                  />
-                ))}
+                ].map(([k, label, type]) => {
+                  const detailsRecord = edit.details as unknown as Record<string, string | number | undefined>;
+                  return (
+                    <Field
+                      key={k}
+                      label={label}
+                      type={type}
+                      value={detailsRecord[k] ?? ""}
+                      onChange={(v) =>
+                        setEdit({
+                          ...edit,
+                          details: {
+                            ...edit.details,
+                            [k]: type === "number" ? Number(v) : v,
+                          },
+                        })
+                      }
+                    />
+                  );
+                })}
                 {[
                   ["requests", "Requested food / theme"],
                   ["dietary", "Dietary requirements"],
                   ["access", "Building access"],
                   ["unknownDetails", "Outstanding details"],
-                ].map(([k, label]) => (
-                  <Notes
-                    key={k}
-                    label={label}
-                    value={(edit.details as any)[k]}
-                    onChange={(v) =>
-                      setEdit({ ...edit, details: { ...edit.details, [k]: v } })
-                    }
-                  />
-                ))}
+                ].map(([k, label]) => {
+                  const detailsRecord = edit.details as unknown as Record<string, string | undefined>;
+                  return (
+                    <Notes
+                      key={k}
+                      label={label}
+                      value={detailsRecord[k] || ""}
+                      onChange={(v) =>
+                        setEdit({ ...edit, details: { ...edit.details, [k]: v } })
+                      }
+                    />
+                  );
+                })}
               </div>
               <h3 className="editor-subtitle">Meals & quantities</h3>
               {edit.items.map((item, i) => (

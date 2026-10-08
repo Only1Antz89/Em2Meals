@@ -1,6 +1,7 @@
 "use client";
+import Link from "next/link";
 import { SignOutButton } from "@clerk/nextjs";
-import { useRef, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useRef, useEffect, useState, type ReactNode } from "react";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -56,8 +57,12 @@ import { Field, Pick, Notes } from "@/components/form-controls";
 import {
   AutoSousFormattedAnswer,
   AutoSousRateLimitAlert,
-  VenueResearchDisplay,
+  type AssistantResult,
 } from "./assistant-display";
+import {
+  VenueResearchDisplay,
+  type VenueResearchResult,
+} from "./venue-research-display";
 import { AutoSousIcon } from "./autosous-icon";
 import { Brand } from "../public-shell";
 import {
@@ -87,7 +92,7 @@ import {
   filterInventoryBatches,
   filterStockMovements,
 } from "@/lib/operations";
-import { Context, useOps, type Ops, type Edit, type Spec } from "./ops-context";
+import { Context, useOps, type Ops, type Edit, type Spec, type StoredEnquiry } from "./ops-context";
 import { updateQuery, useReportFilters } from "./report-controls";
 const navigation = [
   ["", "Overview", LayoutDashboard],
@@ -204,6 +209,118 @@ export function Add({
     </Button>
   );
 }
+function initialEditorValues(edit: Edit): Record<string, string | number> {
+  const vals: Record<string, string | number> = {
+    ...(edit.values as Record<string, string | number> | undefined),
+  };
+  for (const f of edit.fields || []) {
+    if (vals[f.key] === undefined) {
+      vals[f.key] =
+        f.type === "date"
+          ? today()
+          : ["number", "money"].includes(f.type || "")
+            ? 0
+            : "";
+    }
+    if (f.type === "money") {
+      vals[f.key] = Number(vals[f.key]) / 100;
+    }
+  }
+  return vals;
+}
+
+function AdminEditorForm({
+  edit,
+  onClose,
+  run,
+}: {
+  edit: Edit;
+  onClose: () => void;
+  run: Ops["run"];
+}) {
+  const [v, set] = useState<Record<string, string | number>>(() =>
+    initialEditorValues(edit),
+  );
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError("");
+        try {
+          const value: Record<string, unknown> = { ...v };
+          for (const f of edit.fields) {
+            if (f.type === "number") value[f.key] = Number(value[f.key]);
+            if (f.type === "money")
+              value[f.key] = Math.round(Number(value[f.key]) * 100);
+          }
+          await run(
+            edit.action,
+            edit.transform ? edit.transform(value) : value,
+          );
+          onClose();
+        } catch (e) {
+          setError(String((e as Error).message));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <div className="form-grid">
+        {edit.fields.map((f) =>
+          f.options ? (
+            <Pick
+              key={f.key}
+              label={f.label}
+              value={String(v[f.key] ?? "")}
+              onChange={(x) => set({ ...v, [f.key]: x })}
+              options={f.options}
+            />
+          ) : f.type === "textarea" ? (
+            <Notes
+              key={f.key}
+              label={f.label}
+              value={String(v[f.key] ?? "")}
+              onChange={(x) => set({ ...v, [f.key]: x })}
+            />
+          ) : (
+            <Field
+              key={f.key}
+              label={f.label}
+              value={v[f.key] ?? ""}
+              onChange={(x) => set({ ...v, [f.key]: x })}
+              type={f.type === "money" ? "number" : f.type || "text"}
+              step={
+                ["money", "number"].includes(f.type || "") ? "any" : undefined
+              }
+              required={f.required}
+            />
+          ),
+        )}
+      </div>
+      {error && (
+        <p className="error-message" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="form-actions">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onClose}
+          disabled={busy}
+        >
+          Cancel
+        </Button>
+        <Button disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button>
+      </div>
+    </form>
+  );
+}
+
 export function AdminEditor({
   edit,
   onClose,
@@ -213,29 +330,11 @@ export function AdminEditor({
   onClose: () => void;
   run: Ops["run"];
 }) {
-  const [v, set] = useState<any>({}),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  useEffect(() => {
-    const vals: any = { ...edit?.values };
-    for (const f of edit?.fields || []) {
-      if (vals[f.key] === undefined)
-        vals[f.key] =
-          f.type === "date"
-            ? today()
-            : ["number", "money"].includes(f.type || "")
-              ? 0
-              : "";
-      if (f.type === "money") vals[f.key] /= 100;
-    }
-    set(vals);
-    setError("");
-  }, [edit]);
   return (
     <Dialog
       open={!!edit}
       onOpenChange={(o) => {
-        if (!o && !busy) onClose();
+        if (!o) onClose();
       }}
     >
       <DialogContent className="editor-dialog">
@@ -246,81 +345,20 @@ export function AdminEditor({
             {edit?.action === "settings" ? "business settings" : "records"}.
           </DialogDescription>
         </DialogHeader>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            setError("");
-            try {
-              const value = { ...v };
-              for (const f of edit!.fields) {
-                if (f.type === "number") value[f.key] = Number(value[f.key]);
-                if (f.type === "money")
-                  value[f.key] = Math.round(Number(value[f.key]) * 100);
-              }
-              await run(
-                edit!.action,
-                edit!.transform ? edit!.transform(value) : value,
-              );
-              onClose();
-            } catch (e) {
-              setError(String((e as Error).message));
-            } finally {
-              setBusy(false);
+        {edit && (
+          <AdminEditorForm
+            key={
+              edit.action +
+              ":" +
+              String(
+                (edit.values as { id?: string } | undefined)?.id ?? "",
+              )
             }
-          }}
-        >
-          <div className="form-grid">
-            {edit?.fields.map((f) =>
-              f.options ? (
-                <Pick
-                  key={f.key}
-                  label={f.label}
-                  value={v[f.key] || ""}
-                  onChange={(x) => set({ ...v, [f.key]: x })}
-                  options={f.options}
-                />
-              ) : f.type === "textarea" ? (
-                <Notes
-                  key={f.key}
-                  label={f.label}
-                  value={v[f.key] || ""}
-                  onChange={(x) => set({ ...v, [f.key]: x })}
-                />
-              ) : (
-                <Field
-                  key={f.key}
-                  label={f.label}
-                  value={v[f.key] ?? ""}
-                  onChange={(x) => set({ ...v, [f.key]: x })}
-                  type={f.type === "money" ? "number" : f.type || "text"}
-                  step={
-                    ["money", "number"].includes(f.type || "")
-                      ? "any"
-                      : undefined
-                  }
-                  required={f.required}
-                />
-              ),
-            )}
-          </div>
-          {error && (
-            <p className="error-message" role="alert">
-              {error}
-            </p>
-          )}
-          <div className="form-actions">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-              disabled={busy}
-            >
-              Cancel
-            </Button>
-            <Button disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button>
-          </div>
-        </form>
+            edit={edit}
+            onClose={onClose}
+            run={run}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -329,21 +367,23 @@ export default function Admin({
   section,
   ownerEmail,
   authMode,
+  initialMode = "live",
 }: {
   section: string[];
   ownerEmail: string;
   authMode: "demo" | "clerk" | "chatgpt";
+  initialMode?: "live" | "sample";
 }) {
   const [s, setS] = useState(emptyState()),
     [revision, setRevision] = useState(0),
-    [mode, setMode] = useState("live"),
     [loaded, setLoaded] = useState(false),
     [lastUpdated, setLastUpdated] = useState(""),
     [error, setError] = useState(""),
-    [enquiries, setEnquiries] = useState<any[]>([]),
+    [enquiries, setEnquiries] = useState<StoredEnquiry[]>([]),
     [integrations, setIntegrations] = useState<Record<string, boolean>>({}),
     [busy, setBusy] = useState(false),
     [edit, setEdit] = useState<Edit | null>(null);
+  const mode = initialMode;
   const fetchGeneration = useRef(0);
   const page = section[0] || "";
   const { params: navigationParams } = useReportFilters();
@@ -353,34 +393,68 @@ export default function Admin({
     const query = new URLSearchParams({ mode, ...values });
     return `/admin/${p}?${query.toString()}`;
   };
-  async function reload(selected = mode) {
-    const generation = ++fetchGeneration.current;
-    setError("");
-    try {
-      const r = await fetch(`/api/admin/state?mode=${selected}`, {
-        cache: "no-store",
-      });
-      const j: any = await r.json();
-      if (!r.ok) throw Error(j.error);
-      if (generation !== fetchGeneration.current) return;
-      setLastUpdated(new Date().toISOString());
-      setS(j.state);
-      setRevision(j.revision);
-      setEnquiries(j.enquiries);
-      setIntegrations(j.integrations);
-      setLoaded(true);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
+  const reload = useCallback(
+    async (selected = mode) => {
+      const generation = ++fetchGeneration.current;
+      try {
+        const r = await fetch(`/api/admin/state?mode=${selected}`, {
+          cache: "no-store",
+        });
+        const j = (await r.json()) as {
+          error?: string;
+          state: State;
+          revision: number;
+          enquiries: StoredEnquiry[];
+          integrations: Record<string, boolean>;
+        };
+        if (!r.ok) throw Error(j.error);
+        if (generation !== fetchGeneration.current) return;
+        setError("");
+        setLastUpdated(new Date().toISOString());
+        setS(j.state);
+        setRevision(j.revision);
+        setEnquiries(j.enquiries);
+        setIntegrations(j.integrations);
+        setLoaded(true);
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [mode],
+  );
   useEffect(() => {
-    const m =
-      new URLSearchParams(location.search).get("mode") === "sample"
-        ? "sample"
-        : "live";
-    setMode(m);
-    void reload(m);
-  }, []);
+    let ignore = false;
+    async function fetchInitialState() {
+      const generation = ++fetchGeneration.current;
+      try {
+        const r = await fetch(`/api/admin/state?mode=${mode}`, {
+          cache: "no-store",
+        });
+        const j = (await r.json()) as {
+          error?: string;
+          state: State;
+          revision: number;
+          enquiries: StoredEnquiry[];
+          integrations: Record<string, boolean>;
+        };
+        if (ignore || generation !== fetchGeneration.current) return;
+        if (!r.ok) throw Error(j.error);
+        setError("");
+        setLastUpdated(new Date().toISOString());
+        setS(j.state);
+        setRevision(j.revision);
+        setEnquiries(j.enquiries);
+        setIntegrations(j.integrations);
+        setLoaded(true);
+      } catch (e) {
+        if (!ignore) setError((e as Error).message);
+      }
+    }
+    void fetchInitialState();
+    return () => {
+      ignore = true;
+    };
+  }, [mode]);
   useEffect(() => {
     if (!loaded || busy || edit) return;
     const refresh = () => {
@@ -392,8 +466,8 @@ export default function Admin({
       clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [loaded, busy, edit, mode]);
-  async function run(type: string, payload: any) {
+  }, [loaded, busy, edit, mode, reload]);
+  async function run(type: string, payload: unknown) {
     if (busy) throw Error("A save is already in progress");
     ++fetchGeneration.current;
     setBusy(true);
@@ -407,7 +481,11 @@ export default function Admin({
           command: { id: crypto.randomUUID(), type, payload },
         }),
       });
-      const j: any = await r.json();
+      const j = (await r.json()) as {
+        error?: string;
+        state: State;
+        revision: number;
+      };
       if (!r.ok) throw Error(j.error);
       ++fetchGeneration.current;
       setLastUpdated(new Date().toISOString());
@@ -417,7 +495,10 @@ export default function Admin({
       setBusy(false);
     }
   }
-  async function api(path: string, payload: any) {
+  async function api<T = Record<string, unknown>>(
+    path: string,
+    payload: unknown,
+  ): Promise<T> {
     if (busy) throw Error("Another request is in progress");
     ++fetchGeneration.current;
     setBusy(true);
@@ -425,9 +506,16 @@ export default function Admin({
       const r = await fetch("/api/admin/" + path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, mode }),
+        body: JSON.stringify({
+          ...((payload as Record<string, unknown>) || {}),
+          mode,
+        }),
       });
-      const j: any = await r.json().catch(() => ({}));
+      const j = (await r.json().catch(() => ({}))) as T & {
+        error?: string;
+        state?: State;
+        revision?: number;
+      };
       if (!r.ok)
         throw Error(
           j.error || `AutoSous request failed (${r.status}). Please try again.`,
@@ -436,7 +524,7 @@ export default function Admin({
         ++fetchGeneration.current;
         setLastUpdated(new Date().toISOString());
         setS(j.state);
-        setRevision(j.revision);
+        if (typeof j.revision === "number") setRevision(j.revision);
       }
       return j;
     } finally {
@@ -444,7 +532,23 @@ export default function Admin({
     }
   }
   useEffect(() => {
-    const ctx = (document as any).modelContext;
+    const ctx = (
+      document as unknown as {
+        modelContext?: {
+          registerTool?: (
+            tool: {
+              name: string;
+              title: string;
+              description: string;
+              inputSchema: Record<string, unknown>;
+              annotations?: Record<string, unknown>;
+              execute: (input: unknown) => unknown;
+            },
+            options?: { signal?: AbortSignal },
+          ) => Promise<unknown> | void;
+        };
+      }
+    ).modelContext;
     if (!ctx?.registerTool || !loaded) return;
     const controller = new AbortController();
     try {
@@ -461,8 +565,12 @@ export default function Admin({
               additionalProperties: false,
             },
             annotations: { readOnlyHint: true, untrustedContentHint: true },
-            execute(input: any) {
-              if (!input || Object.keys(input).length)
+            execute(input: unknown) {
+              if (
+                input &&
+                typeof input === "object" &&
+                Object.keys(input).length > 0
+              )
                 throw Error("No arguments accepted");
               return {
                 mode,
@@ -602,9 +710,9 @@ export default function Admin({
             </SidebarGroup>
           </SidebarContent>
           <SidebarFooter>
-            <a href="/" className="back-site">
+            <Link href="/" className="back-site">
               View website <ArrowUpRight size={16} />
-            </a>
+            </Link>
             <div className="owner-account">
               <span>EM</span>
               <div>
@@ -623,9 +731,9 @@ export default function Admin({
                 Sign out
               </a>
             ) : (
-              <a className="signout" href="/">
+              <Link className="signout" href="/">
                 Exit dashboard
-              </a>
+              </Link>
             )}
           </SidebarFooter>
         </Sidebar>
@@ -730,8 +838,8 @@ export default function Admin({
               )
             ) : page === "recipes" ? (
               <Recipes />
-            ) : page === "inventory" && inventoryPage ? (
-              <Inventory view={inventoryPage[0] || "overview"} />
+            ) : page === "inventory" ? (
+              <Inventory view={inventoryPage?.[0] || "overview"} />
             ) : page === "suppliers" ? (
               <Suppliers />
             ) : page === "business" ? (
@@ -1896,20 +2004,20 @@ function Assistant() {
   const { api, s, integrations, busy } = useOps();
   const [question, setQuestion] = useState(""),
     [lastQuestion, setLastQuestion] = useState(""),
-    [result, setResult] = useState<any>(null),
+    [result, setResult] = useState<AssistantResult | null>(null),
     [error, setError] = useState(""),
     [venue, setVenue] = useState(""),
-    [venueResult, setVenueResult] = useState<any>(null),
+    [venueResult, setVenueResult] = useState<VenueResearchResult | null>(null),
     [venueError, setVenueError] = useState(""),
     [venueBusy, setVenueBusy] = useState(false),
-    [lastVenueOrder, setLastVenueOrder] = useState<any>(null);
+    [lastVenueOrder, setLastVenueOrder] = useState<Order | null>(null);
 
   const runQuery = async (queryText: string) => {
     const trimmed = queryText.trim();
     if (!trimmed) return;
     setError("");
     try {
-      const res = await api("assistant", { question: trimmed });
+      const res = await api<AssistantResult>("assistant", { question: trimmed });
       setResult(res);
       setLastQuestion(trimmed);
     } catch (e) {
@@ -1927,7 +2035,10 @@ function Assistant() {
       const label = selectedOrder
         ? `Venue Research: ${selectedOrder.details.venue} (${selectedOrder.reference})`
         : "Research venue";
-      const res = await api("assistant", { question: label, venueOrderId });
+      const res = await api<VenueResearchResult>("assistant", {
+        question: label,
+        venueOrderId,
+      });
       setVenueResult(res);
     } catch (e) {
       setVenueError((e as Error).message);

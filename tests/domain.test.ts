@@ -13,10 +13,11 @@ import {
   emptyState,
   enquirySchema,
   today,
+  type State,
 } from "../lib/domain";
 import { sampleState } from "../lib/sample";
 import { customerCrm, customerActivities } from "../lib/crm";
-const act = (s: any, type: string, payload: any, id = crypto.randomUUID()) =>
+const act = (s: State, type: string, payload: unknown, id = crypto.randomUUID()) =>
   applyCommand(s, { id, type, payload }, "test-owner");
 test("sample scenario includes a completed lunch, assigned allergy, shortage and waste", () => {
   const s = sampleState();

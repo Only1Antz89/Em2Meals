@@ -120,7 +120,12 @@ CRITICAL OPERATIONAL RULES:
     );
   } catch (e) {
     const status =
-      (e as any)?.status ||
+      (typeof e === "object" &&
+      e !== null &&
+      "status" in e &&
+      typeof (e as { status: unknown }).status === "number"
+        ? (e as { status: number }).status
+        : undefined) ||
       (e instanceof Error && /rate limit/i.test(e.message)
         ? 429
         : e instanceof Error && /(unavailable|setup required)/i.test(e.message)

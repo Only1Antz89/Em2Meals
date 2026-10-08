@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { ArrowRight, Check, Plus, Trash2 } from "lucide-react";
 import { VenueSearch } from "@/components/venue-search";
 import { Button } from "@/components/ui/button";
@@ -27,18 +28,31 @@ const initial: Enquiry = {
   unknownDetails: "",
 };
 export default function EnquiryForm() {
-  const [data, set] = useState(initial),
-    [step, setStep] = useState(0),
+  const [data, set] = useState<Enquiry>(() => {
+    if (typeof window !== "undefined") {
+      const serviceParam = new URLSearchParams(window.location.search).get("service");
+      if (serviceParam === "corporate") {
+        return { ...initial, service: "corporate" };
+      }
+    }
+    return initial;
+  });
+  const [step, setStep] = useState(0),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [reference, setReference] = useState("");
-  const key = useRef("");
+  const key = useRef(
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : "",
+  );
   const form = useRef<HTMLFormElement>(null);
-  const update = (k: keyof Enquiry, v: any) => set((d) => ({ ...d, [k]: v }));
+  const update = <K extends keyof Enquiry>(k: K, v: Enquiry[K]) =>
+    set((d) => ({ ...d, [k]: v }));
   useEffect(() => {
-    key.current = crypto.randomUUID();
-    if (new URLSearchParams(location.search).get("service") === "corporate")
-      update("service", "corporate");
+    if (!key.current && typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      key.current = crypto.randomUUID();
+    }
   }, []);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,9 +76,9 @@ export default function EnquiryForm() {
           website: new FormData(form.current!).get("website") || "",
         }),
       });
-      const j: any = await r.json();
-      if (!r.ok) throw Error(j.error);
-      setReference(j.reference);
+      const j = (await r.json()) as { error?: string; reference?: string };
+      if (!r.ok) throw Error(j.error || "Submission failed");
+      if (j.reference) setReference(j.reference);
     } catch (e) {
       setError(
         e instanceof Error
@@ -90,9 +104,9 @@ export default function EnquiryForm() {
           plans and use the contact details you provided to follow up.
         </p>
         <p>Your booking is not confirmed yet.</p>
-        <a className="solid-cta" href="/">
+        <Link className="solid-cta" href="/">
           Back to Fork Goodness Baked
-        </a>
+        </Link>
       </section>
     );
   return (
@@ -333,7 +347,7 @@ export default function EnquiryForm() {
             <p className="wide form-help">
               We use these details to respond and plan your catering. Please
               share only the guest information needed for meal requirements.{" "}
-              <a href="/privacy">Privacy information</a>
+              <Link href="/privacy">Privacy information</Link>
             </p>
             <label className="honeypot" aria-hidden="true">
               Website

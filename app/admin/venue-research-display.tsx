@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import {
   Building2,
-  MapPin,
   Truck,
   DoorOpen,
   CheckCircle2,

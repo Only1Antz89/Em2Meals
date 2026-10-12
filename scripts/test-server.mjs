@@ -15,6 +15,10 @@ await build({
           { filter: /^(cloudflare:workers|@\/app\/chatgpt-auth)$/ },
           () => ({ path: resolve("tests/runtime-fixture.ts") }),
         );
+        // Route handlers run outside a Next.js request scope in unit tests.
+        b.onResolve({ filter: /^next\/server$/ }, () => ({
+          path: resolve("tests/next-server-stub.ts"),
+        }));
       },
     },
   ],

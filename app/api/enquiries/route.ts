@@ -6,6 +6,9 @@ import {
   sameOrigin,
   importEnquiries,
 } from "@/lib/server";
+import { clientIp } from "@/lib/upgrade-server";
+import { notifyOwnerOfEnquiry } from "@/lib/enquiry-notification";
+import { after } from "next/server";
 export async function POST(req: Request) {
   try {
     sameOrigin(req);
@@ -46,7 +49,7 @@ export async function POST(req: Request) {
         reference: `ENQ-${existing.id.slice(0, 8).toUpperCase()}`,
       });
     }
-    const ip = req.headers.get("cf-connecting-ip") || "local";
+    const ip = clientIp(req);
     const window = `${ip}:${Math.floor(Date.now() / 3600000)}`;
     const now = new Date();
     const expiresAt = new Date(
@@ -65,7 +68,7 @@ export async function POST(req: Request) {
       .run();
     const rate = await db
       .prepare(
-        "INSERT INTO rate_limits(id,count,expires_at) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=count+1,expires_at=excluded.expires_at RETURNING count",
+        "INSERT INTO rate_limits(id,count,expires_at) VALUES(?,1,?) ON CONFLICT(id) DO UPDATE SET count=rate_limits.count+1,expires_at=excluded.expires_at RETURNING count",
       )
       .bind(bucket, expiresAt)
       .first<{ count: number }>();
@@ -88,10 +91,21 @@ export async function POST(req: Request) {
     if (!saved || saved.payload_hash !== hash)
       throw Error("Please reload and try again");
     await importEnquiries().catch(() => undefined);
-    return Response.json(
-      { reference: `ENQ-${saved.id.slice(0, 8).toUpperCase()}` },
-      { status: 201 },
-    );
+    const reference = `ENQ-${saved.id.slice(0, 8).toUpperCase()}`;
+    if (saved.id === id) {
+      const origin = new URL(req.url).origin;
+      const notify = () =>
+        notifyOwnerOfEnquiry({ reference, details, origin }).catch((error) =>
+          console.error("New enquiry notification failed", error),
+        );
+      // Send after the response so the visitor never waits on email delivery.
+      try {
+        after(notify);
+      } catch {
+        // Outside a Next.js request scope (unit tests); skip the email.
+      }
+    }
+    return Response.json({ reference }, { status: 201 });
   } catch (e) {
     return errorResponse(e);
   }

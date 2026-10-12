@@ -5,6 +5,8 @@ import {
   industries,
 } from "./reporting";
 import { z } from "zod";
+import { type Menu, menuCommand } from "./menu";
+import { privacyCommand } from "./privacy";
 import {
   type OperationsState,
   type Place,
@@ -208,6 +210,7 @@ export type Order = {
 };
 export type State = OperationsState & {
   journeys: Journey[];
+  menus: Menu[];
   settings: {
     priceMode?: "exclusive" | "inclusive";
     warningDays?: number;
@@ -229,6 +232,7 @@ export type State = OperationsState & {
   recipes: Recipe[];
   customers: {
     industry?: string;
+    erasedAt?: string;
     id: string;
     name: string;
     company: string;
@@ -370,6 +374,7 @@ export function emptyState(): State {
   return {
     schemaVersion: 5,
     journeys: [],
+    menus: [],
     offerings: [],
     invoices: [],
     sequences: {},
@@ -1044,13 +1049,19 @@ export function applyCommand(
       break;
     }
     case "order": {
-      // Historical website enquiries may be imported after their event date.
-      const details =
-        p.imported === true && actor === "system:enquiry-import"
-          ? enquirySchema.innerType().parse(p.details)
-          : enquirySchema.parse(p.details);
       const id = typeof p.orderId === "string" && p.orderId ? p.orderId : uid();
       const o = s.orders.find((x) => x.id === id);
+      // Historical website enquiries may be imported after their event date,
+      // and an existing order may keep its (now past) date while other
+      // details are corrected. Only a newly entered date must be upcoming.
+      const unchangedDate =
+        !!o &&
+        (p.details as { date?: unknown } | undefined)?.date === o.details.date;
+      const details =
+        (p.imported === true && actor === "system:enquiry-import") ||
+        unchangedDate
+          ? enquirySchema.innerType().parse(p.details)
+          : enquirySchema.parse(p.details);
       if (o) editable(o);
       let customer = s.customers.find(
         (x) =>
@@ -1664,6 +1675,8 @@ export function applyCommand(
     default: {
       const result =
         applyOperations(s, command.type, p, at) ??
+        menuCommand(s, command.type, p, at) ??
+        privacyCommand(s, command.type, p, at) ??
         reportingCommand(s, command.type, p);
       if (result === undefined) throw Error("Unknown action");
       target = result;

@@ -19,6 +19,7 @@ import {
   ArrowRight,
   Send,
   ChevronUp,
+  BookOpen,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -76,6 +77,7 @@ import {
   type Recipe,
 } from "@/lib/domain";
 import OrderPanel from "./order-panel";
+import MenuStudio from "./menu-studio";
 import BusinessHub from "./business-hub";
 import WasteReports from "./waste-reports";
 import CRM from "./crm";
@@ -98,6 +100,7 @@ const navigation = [
   ["", "Overview", LayoutDashboard],
   ["orders", "Enquiries & orders", ClipboardList],
   ["recipes", "Recipes & costing", Utensils],
+  ["menu", "Menu", BookOpen],
   ["inventory", "Inventory", Package],
   ["suppliers", "Suppliers", Truck],
   ["crm", "CRM", Users],
@@ -209,6 +212,26 @@ export function Add({
     </Button>
   );
 }
+function optionsFor(f: Spec, values: Record<string, unknown>) {
+  return typeof f.options === "function" ? f.options(values) : f.options || [];
+}
+// Clear selections whose options depend on a value that just changed.
+function withDependentOptions<T extends Record<string, unknown>>(
+  fields: Spec[],
+  values: T,
+): T {
+  const next: Record<string, unknown> = { ...values };
+  for (const f of fields)
+    if (
+      typeof f.options === "function" &&
+      next[f.key] &&
+      !optionsFor(f, next).some(
+        (o) => (typeof o === "string" ? o : o.value) === next[f.key],
+      )
+    )
+      next[f.key] = "";
+  return next as T;
+}
 function initialEditorValues(edit: Edit): Record<string, string | number> {
   const vals: Record<string, string | number> = {
     ...(edit.values as Record<string, string | number> | undefined),
@@ -276,8 +299,11 @@ function AdminEditorForm({
               key={f.key}
               label={f.label}
               value={String(v[f.key] ?? "")}
-              onChange={(x) => set({ ...v, [f.key]: x })}
-              options={f.options}
+              onChange={(x) =>
+                set(withDependentOptions(edit.fields, { ...v, [f.key]: x }))
+              }
+              options={optionsFor(f, v)}
+              required={f.required}
             />
           ) : f.type === "textarea" ? (
             <Notes
@@ -285,6 +311,7 @@ function AdminEditorForm({
               label={f.label}
               value={String(v[f.key] ?? "")}
               onChange={(x) => set({ ...v, [f.key]: x })}
+              required={f.required}
             />
           ) : (
             <Field
@@ -838,6 +865,8 @@ export default function Admin({
               )
             ) : page === "recipes" ? (
               <Recipes />
+            ) : page === "menu" ? (
+              <MenuStudio />
             ) : page === "inventory" ? (
               <Inventory view={inventoryPage?.[0] || "overview"} />
             ) : page === "suppliers" ? (
@@ -1831,7 +1860,7 @@ export function Drafts() {
   );
 }
 function SettingsPage() {
-  const { s, open, integrations } = useOps();
+  const { s, open, integrations, mode } = useOps();
   return (
     <>
       <Panel
@@ -1957,6 +1986,24 @@ function SettingsPage() {
           VAT is configurable; this workspace does not determine tax treatment
           or file tax returns. Kitchen and vehicle figures must be completed
           before live cost estimates.
+        </p>
+      </Panel>
+      <Panel
+        title="Backup & data export"
+        action={
+          <Button asChild variant="outline">
+            <a href={`/api/admin/export?mode=${mode}`} download>
+              Download backup
+            </a>
+          </Button>
+        }
+      >
+        <p className="panel-note">
+          Downloads every record in the {mode === "sample" ? "sample" : "live"}{" "}
+          workspace as a JSON file
+          {mode === "live" ? ", including original website enquiries" : ""}.
+          It contains customer personal data: store it securely and delete old
+          copies in line with your retention schedule.
         </p>
       </Panel>
       <Panel title="Connected services">

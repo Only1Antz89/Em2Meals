@@ -25,6 +25,7 @@ import {
   type CrmCustomer,
 } from "@/lib/crm";
 import { useOps, type Edit } from "./ops-context";
+import { EraseCustomerData } from "./privacy-actions";
 
 type Customer = State["customers"][number];
 type FollowUp = State["followUps"][number];
@@ -231,9 +232,10 @@ function openFollowUpEditor(
       {
         key: "orderId",
         label: "Related enquiry or order",
-        options: orders
-          .filter((order) => !selectedId || order.customerId === selectedId)
-          .map((order) => ({ value: order.id, label: order.reference })),
+        options: (values) =>
+          orders
+            .filter((order) => !values.customerId || order.customerId === values.customerId)
+            .map((order) => ({ value: order.id, label: order.reference })),
       },
       { key: "dueDate", label: "Due date", type: "date", required: true },
       { key: "note", label: "Next action", type: "textarea", required: true },
@@ -273,9 +275,11 @@ function openFeedbackEditor(
       {
         key: "orderId",
         label: "Order",
-        options: orders
-          .filter((order) => !customerId || order.customerId === customerId)
-          .map((order) => ({ value: order.id, label: order.reference })),
+        options: (values) =>
+          orders
+            .filter((order) => !values.customerId || order.customerId === values.customerId)
+            .map((order) => ({ value: order.id, label: order.reference })),
+        required: true,
       },
       { key: "rating", label: "Rating (1–5)", type: "number" },
       { key: "date", label: "Date", type: "date" },
@@ -569,7 +573,7 @@ function ClientPage({ customerId, tab }: { customerId: string; tab: string }) {
     <div className="crm-client-page">
       <header className="crm-client-header">
         <div><h1>{customer.company || customer.name}</h1><p>{customer.name} <span /> {customer.email} <span /> {customer.phone || "Phone not recorded"}</p><strong>{item.repeat ? "Repeat business" : item.stage} · {item.completedEvents} completed event{item.completedEvents === 1 ? "" : "s"}</strong></div>
-        <div><Button onClick={() => openEngagementEditor(open, customer, orders)}><Plus size={15} /> Record engagement</Button><Button variant="outline" onClick={() => openFollowUpEditor(open, s.customers, s.orders, customer)}><Plus size={15} /> Schedule follow-up</Button></div>
+        <div><Button onClick={() => openEngagementEditor(open, customer, orders)}><Plus size={15} /> Record engagement</Button><Button variant="outline" onClick={() => openFollowUpEditor(open, s.customers, s.orders, customer)}><Plus size={15} /> Schedule follow-up</Button><EraseCustomerData customer={customer} /></div>
       </header>
       <ClientTabs customerId={customer.id} active={tab} />
       {tab === "activity" ? <Section title="Activity" description={`A complete timeline of your relationship with ${customer.company || customer.name}.`}><ActivityTimeline customerId={customer.id} /></Section> : tab === "orders" ? <ClientOrderHistory customer={customer} /> : tab === "feedback" ? <FeedbackView customer={customer} /> : tab === "notes" ? <Section title="Notes" description="Preferences and relationship context shared across this client record." action={<Button variant="outline" size="sm" onClick={() => openCustomerEditor(open, customer)}>Edit notes</Button>}><div className="crm-notes">{customer.notes || "No relationship notes recorded."}</div></Section> : <><div className="crm-client-grid"><Section title="Recent activity" description={`A timeline of your relationship with ${customer.company || customer.name}.`}><ActivityTimeline customerId={customer.id} limit={6} /></Section><div className="crm-client-rail"><RelationshipDetails item={item} /><OpenWork customer={customer} /></div></div><ClientOrderHistory customer={customer} /></>}

@@ -7,12 +7,13 @@ export type StoredEnquiry = {
   details: Enquiry;
   createdAt: string;
 };
-
+export type Option = string | { value: string; label: string };
 export type Spec = {
   key: string;
   label: string;
   type?: string;
-  options?: (string | { value: string; label: string })[];
+  // A function lets options depend on other values in the same editor.
+  options?: Option[] | ((values: Record<string, unknown>) => Option[]);
   required?: boolean;
 };
 

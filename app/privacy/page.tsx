@@ -1,4 +1,12 @@
+import type { Metadata } from "next";
 import { Header, Footer } from "../public-shell";
+
+export const metadata: Metadata = {
+  title: "Privacy | Fork Goodness Baked",
+  description:
+    "How Fork Goodness Baked collects, uses and protects the information you share in an enquiry, and how to ask for it to be corrected or erased.",
+};
+
 export default function Page() {
   return (
     <>
@@ -21,14 +29,19 @@ export default function Page() {
         <p>
           When configured, AutoSous helps the owner review requests and
           Google Maps supports venue and journey planning. Email delivery uses
-          SMTP2GO. The owner reviews dietary decisions and outgoing emails.
+          SMTP2GO, which also notifies the owner of each new enquiry with your
+          name, contact details and event summary (never dietary details). The
+          owner reviews dietary decisions and outgoing emails.
           Public venue searches do not include guest names or allergy details.
         </p>
         <h2>Corrections and deletion</h2>
         <p>
-          Ask the owner to correct or remove your enquiry using the contact
-          channel through which they respond. Business contact details and the
-          retention schedule must be completed before public launch.
+          Ask the owner to correct or erase your information using the contact
+          channel through which they respond. On request, your contact
+          details, enquiry text, dietary and venue details are permanently
+          erased; issued invoices are kept only as long as accounting law
+          requires. Business contact details and the retention schedule must
+          be completed before public launch.
         </p>
         <h2>Browser storage</h2>
         <p>

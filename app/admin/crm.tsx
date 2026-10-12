@@ -204,8 +204,8 @@ function openEngagementEditor(
     transform: (value) => ({
       ...value,
       customerId: customer.id,
-      orderId: value.orderId || undefined,
-      occurredAt: new Date(value.occurredAt).toISOString(),
+      orderId: value.orderId ? String(value.orderId) : undefined,
+      occurredAt: new Date(String(value.occurredAt)).toISOString(),
     }),
   });
 }

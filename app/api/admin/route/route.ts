@@ -44,7 +44,9 @@ export async function POST(req: Request) {
       destinationAddress: string,
       departureTime: string,
     ) {
-      const result = await googleJSON(
+      const result = await googleJSON<{
+        routes?: Array<{ distanceMeters: number; duration: string }>;
+      }>(
         "https://routes.googleapis.com/directions/v2:computeRoutes",
         {
           origin: { address: origin },

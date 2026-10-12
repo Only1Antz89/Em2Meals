@@ -13,10 +13,11 @@ import {
   emptyState,
   enquirySchema,
   today,
+  type State,
 } from "../lib/domain";
 import { sampleState } from "../lib/sample";
 import { customerCrm, customerActivities } from "../lib/crm";
-const act = (s: any, type: string, payload: any, id = crypto.randomUUID()) =>
+const act = (s: State, type: string, payload: unknown, id = crypto.randomUUID()) =>
   applyCommand(s, { id, type, payload }, "test-owner");
 test("sample scenario includes a completed lunch, assigned allergy, shortage and waste", () => {
   const s = sampleState();
@@ -1026,7 +1027,6 @@ test("inclusive invoice preserves accepted totals and issued records cannot edit
 import "./reporting.test";
 
 import { liveMenu, publicMenu, generateMenu, type Menu } from "../lib/menu";
-import type { State } from "../lib/domain";
 import { assertStateIntegrity } from "../lib/state-integrity";
 import { normaliseState as normaliseMenus } from "../lib/operations";
 const dishNames = (menu: Menu) => menu.sections.flatMap((x) => x.items.map((i) => i.name));

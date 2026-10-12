@@ -966,11 +966,16 @@ export function SupplierInsights({
                   onClick={async () => {
                     try {
                       setError("");
+                      const res = await api<{
+                        research: Research;
+                        recommendation: string;
+                        profile: Record<string, string>;
+                      }>("research", {
+                        kind: "supplier",
+                        id: sup.id,
+                      });
                       setResult({
-                        ...(await api("research", {
-                          kind: "supplier",
-                          id: sup.id,
-                        })),
+                        ...res,
                         supplierId: sup.id,
                       });
                     } catch (e) {

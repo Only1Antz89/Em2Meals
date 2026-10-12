@@ -75,6 +75,14 @@ The owner **Menu** page generates a seasonal website menu from the active recipe
 
 Client recaps are built from a dedicated projection containing only that customer’s delivered orders within the selected period, popular dishes, measured waste and feedback. Internal costs and margins are excluded. CSV export neutralises formula prefixes. Printable reports include only the recap section.
 
+## Privacy, notifications and backups
+
+- **New enquiry alerts:** when SMTP2GO and `OWNER_EMAILS` are configured, each new website enquiry emails the owner a short summary (name, contact, occasion, date, guests and a dashboard link; never dietary details). It is sent after the visitor's response and failures are logged without affecting the enquiry. Customers are never emailed automatically.
+- **Erasure requests:** CRM → client → **Erase personal data** anonymises the customer, their enquiries (contact, venue, request and dietary text), draft invoices and email drafts, removes their activity and follow-ups, declines open enquiries and deletes the original website submissions. Accepted orders must be completed or cancelled first. Issued invoices are kept unchanged for accounting retention.
+- **Spam and test enquiries:** an enquiry with no quotes accepted, stock, invoices, purchases, waste, feedback or journeys can be deleted from its order page, along with its original submission and a customer record that has no other history.
+- **Backups:** Settings → **Download backup** exports the whole workspace (and, for live, the original enquiries) as JSON. It contains personal data; store it securely.
+- **Headers and indexing:** all pages send `nosniff`, a strict referrer policy, a restrictive permissions policy and same-origin framing only. Admin, API and preview routes are `noindex`; `robots.txt` and `sitemap.xml` are generated from `NEXT_PUBLIC_SITE_URL`.
+
 ## Launch readiness
 
 The initial deployment is private. Before opening to customers: complete business contact/privacy/retention information, verify chef credentials before award claims, enter real recipes/allergen labels/supplier prices and approved storage instructions, configure and live-test Google/email integrations, and review a real end-to-end order with the owner. API credentials and outgoing communications are not silently substituted with fabricated results.

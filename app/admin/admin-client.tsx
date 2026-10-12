@@ -1860,7 +1860,7 @@ export function Drafts() {
   );
 }
 function SettingsPage() {
-  const { s, open, integrations } = useOps();
+  const { s, open, integrations, mode } = useOps();
   return (
     <>
       <Panel
@@ -1986,6 +1986,24 @@ function SettingsPage() {
           VAT is configurable; this workspace does not determine tax treatment
           or file tax returns. Kitchen and vehicle figures must be completed
           before live cost estimates.
+        </p>
+      </Panel>
+      <Panel
+        title="Backup & data export"
+        action={
+          <Button asChild variant="outline">
+            <a href={`/api/admin/export?mode=${mode}`} download>
+              Download backup
+            </a>
+          </Button>
+        }
+      >
+        <p className="panel-note">
+          Downloads every record in the {mode === "sample" ? "sample" : "live"}{" "}
+          workspace as a JSON file
+          {mode === "live" ? ", including original website enquiries" : ""}.
+          It contains customer personal data: store it securely and delete old
+          copies in line with your retention schedule.
         </p>
       </Panel>
       <Panel title="Connected services">

@@ -788,3 +788,33 @@ test("concurrent invoice issue cannot reuse numbering or overwrite another issue
   assert.equal(issued.length, 2);
   assert.equal(new Set(issued.map((i) => i.number)).size, 2);
 });
+
+test("new enquiry owner notification carries triage details only", async () => {
+  const { notifyOwnerOfEnquiry } = await import("../lib/enquiry-notification");
+  const originalFetch = globalThis.fetch;
+  const sent: { to: string[]; subject: string; text_body: string; html_body: string }[] = [];
+  globalThis.fetch = async (_url, init) => {
+    sent.push(JSON.parse(String(init?.body)));
+    return Response.json({ data: { succeeded: 1, failed: 0, email_id: "n1" } });
+  };
+  try {
+    const result = await notifyOwnerOfEnquiry({
+      reference: "ENQ-TEST",
+      details: {
+        ...details,
+        name: "<b>Sam</b>",
+        dietary: "Severe peanut allergy",
+        requirements: [{ reference: "Guest A", requirements: "Coeliac", meal: "", reviewed: false }],
+      },
+      origin: "https://example.test",
+    });
+    assert.equal(result.status, "sent");
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].to, ["owner@example.com"]);
+    assert.match(sent[0].text_body, /https:\/\/example.test\/admin\/orders\?mode=live/);
+    assert.ok(!/peanut|Coeliac|Guest A/i.test(JSON.stringify(sent[0])));
+    assert.ok(sent[0].html_body.includes("&lt;b&gt;Sam&lt;/b&gt;"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

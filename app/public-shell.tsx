@@ -26,7 +26,6 @@ export function Brand({
     <Link
       href={admin ? "/admin" : "/"}
       className={`brand${inverse ? " brand--inverse" : ""}${admin ? " brand--admin" : ""}`}
-      aria-label={admin ? "Em2 Catering Platform dashboard" : "Fork Goodness Baked home"}
     >
       {!admin && <BrandMark className="brand__mark" />}
       <span className="brand__wordmark">
@@ -35,9 +34,11 @@ export function Brand({
         >
           {admin ? "Em2" : "Fork Goodness"}
         </strong>
+        {" "}
         <small style={admin ? undefined : { letterSpacing: "0.5em" }}>
           {admin ? "Catering Platform" : "Baked"}
         </small>
+        <span className="sr-only">{admin ? " dashboard" : " home"}</span>
       </span>
     </Link>
   );

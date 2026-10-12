@@ -23,6 +23,7 @@ import {
 import { Field, Notes, Pick } from "@/components/form-controls";
 import { Panel, GridTable, Tag, draftFields } from "./admin-client";
 import { useOps } from "./ops-context";
+import { DeleteEnquiry } from "./privacy-actions";
 import {
   money,
   recipeCost,
@@ -197,6 +198,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
             Cancel order
           </Button>
         )}
+        <DeleteEnquiry order={o} />
       </div>
       <div className="stage-track">
         {stages.map((status, i) => (

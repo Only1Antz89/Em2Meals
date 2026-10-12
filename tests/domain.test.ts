@@ -1117,3 +1117,55 @@ test("older workspaces without menus normalise and generation is pure", () => {
   assert.deepEqual(s.menus, []);
   assert.equal(generateMenu(sampleState(), menuYear, "Summer").sections.length > 0, true);
 });
+
+import { erasedName, erasedEmail } from "../lib/privacy";
+test("customer erasure anonymises personal data but keeps issued invoices and blocks active orders", () => {
+  let s: State = sampleState();
+  const northbank = s.customers.find((c) => c.company.startsWith("Northbank"))!;
+  assert.throws(() => act(s, "customer-erase", { customerId: northbank.id }), /Complete or cancel/);
+  const enquiry = s.orders.find((o) => o.status === "enquiry")!;
+  const customerId = enquiry.customerId;
+  s = act(s, "crm-follow-up", { customerId, note: "Call back", dueDate: today(), status: "open" });
+  s = act(s, "customer-erase", { customerId });
+  const customer = s.customers.find((c) => c.id === customerId)!;
+  assert.equal(customer.name, erasedName);
+  assert.equal(customer.email, erasedEmail(customerId));
+  assert.ok(customer.erasedAt);
+  const orders = s.orders.filter((o) => o.customerId === customerId);
+  assert.ok(orders.length > 0);
+  for (const order of orders) {
+    assert.equal(order.details.name, erasedName);
+    assert.equal(order.details.phone, "");
+    assert.equal(order.details.dietary, "");
+    assert.deepEqual(order.details.requirements, []);
+    assert.ok(["delivered", "cancelled", "declined"].includes(order.status));
+  }
+  assert.equal(s.followUps.filter((f) => f.customerId === customerId).length, 0);
+  assert.equal(s.engagements.filter((f) => f.customerId === customerId).length, 0);
+  assertStateIntegrity(s);
+});
+test("only unworked enquiries can be deleted, removing an otherwise empty customer", () => {
+  let s: State = sampleState();
+  s = act(s, "order", {
+    details: { ...s.orders[0].details, name: "Spam Bot", email: "spam@example.com", company: "", date: "" },
+    items: [],
+  });
+  const spam = s.orders.at(-1)!;
+  s = act(s, "order-delete", { orderId: spam.id });
+  assert.ok(!s.orders.some((o) => o.id === spam.id));
+  assert.ok(!s.customers.some((c) => c.email === "spam@example.com"));
+  const delivered = s.orders.find((o) => o.status === "delivered")!;
+  assert.throws(() => act(s, "order-delete", { orderId: delivered.id }), /can't be deleted/);
+  assertStateIntegrity(s);
+});
+test("owners can correct an order whose event date has passed without changing the date", () => {
+  let s: State = sampleState();
+  const order = s.orders.find((o) => o.status === "enquiry")!;
+  s.orders.find((o) => o.id === order.id)!.details.date = "2020-01-01";
+  s = act(s, "order", { orderId: order.id, details: { ...order.details, date: "2020-01-01", phone: "07000000000" }, items: order.items });
+  assert.equal(s.orders.find((o) => o.id === order.id)!.details.phone, "07000000000");
+  assert.throws(
+    () => act(s, "order", { orderId: order.id, details: { ...order.details, date: "2020-02-01" }, items: order.items }),
+    /must not be in the past/,
+  );
+});

@@ -212,6 +212,36 @@ export async function readPublishedMenu(): Promise<PublicMenu | null> {
   if (!row) return null;
   return liveMenu(JSON.parse(row.data) as Pick<State, "menus">);
 }
+// Remove original website submissions (and their import records, by cascade)
+// by id, and any whose submitted email matches an erased customer.
+export async function deleteRawEnquiries({
+  ids,
+  email,
+}: {
+  ids: string[];
+  email?: string;
+}) {
+  const db = database();
+  const targets = new Set(ids);
+  if (email) {
+    const rows = await db
+      .prepare("SELECT id,payload FROM enquiries")
+      .all<{ id: string; payload: string }>();
+    for (const row of rows.results) {
+      try {
+        const details = JSON.parse(row.payload) as { email?: string };
+        if (details.email?.trim().toLowerCase() === email) targets.add(row.id);
+      } catch {
+        /* unreadable payloads are left for manual review */
+      }
+    }
+  }
+  for (const id of targets) {
+    await db.prepare("DELETE FROM enquiry_imports WHERE enquiry_id=?").bind(id).run();
+    await db.prepare("DELETE FROM enquiries WHERE id=?").bind(id).run();
+  }
+  return targets.size;
+}
 export async function readEnquiries() {
   const r = await database()
     .prepare(

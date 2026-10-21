@@ -3,11 +3,11 @@
 import { useDeferredValue, useMemo, useRef, useState, useTransition, type ComponentType, type ReactNode } from "react";
 import Image from "next/image";
 import { Beef, Check, ChefHat, CircleDollarSign, Droplets, Egg, Fish, Flame, ImagePlus, Leaf, ListChecks, Milk, PackageCheck, Pencil, Plus, Search, Sprout, Upload, Utensils, Wheat, X } from "lucide-react";
-import { IngredientInfo } from "@/components/ingredient-info";
 import { ingredientAvailable, ingredientPrice, money, normaliseRecipeMeasurement, recipeCurrentCost, recipeUnits, today, type Ingredient, type Recipe, type RecipeLine, type RecipeUnit } from "@/lib/domain";
 import { seasons } from "@/lib/operations";
 import { useOps } from "./ops-context";
 import { AutoSousIcon } from "./autosous-icon";
+import { IngredientInfo } from "@/components/ingredient-info";
 import { Field, Pick } from "@/components/form-controls";
 import { Button } from "@/components/ui/button";
 

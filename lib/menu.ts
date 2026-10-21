@@ -15,16 +15,28 @@ export type { MenuTheme, PublicMenu, Season };
 // edit it, then publish a frozen public projection. Internal recipe costs and
 // ids never enter the published snapshot.
 
-const short = z.string().trim().max(200);
-const long = z.string().max(4000);
+export const menuLimits = {
+  sections: 30,
+  dishesPerSection: 100,
+  shortText: 200,
+  longText: 4000,
+  // Stored in pence: £10,000.
+  maxPrice: 1000000,
+} as const;
+const short = z
+  .string()
+  .trim()
+  .max(menuLimits.shortText, `Keep this under ${menuLimits.shortText} characters`);
+const long = z
+  .string()
+  .max(menuLimits.longText, `Keep this under ${menuLimits.longText} characters`);
 // Only same-site paths or https URLs (e.g. Vercel Blob uploads) are rendered.
+export const isMenuImageUrl = (value: string) =>
+  value.length <= 1000 &&
+  (!value || /^\/(?!\/)/.test(value) || /^https:\/\//.test(value));
 const imageUrl = z
   .string()
-  .max(1000)
-  .refine(
-    (value) => !value || /^\/(?!\/)/.test(value) || /^https:\/\//.test(value),
-    "Images must be uploaded or chosen from the library",
-  )
+  .refine(isMenuImageUrl, "Images must be uploaded or chosen from the library")
   .default("");
 const id = z.string().min(1).max(100);
 const season = z.enum(seasons);
@@ -37,15 +49,31 @@ const itemSchema = z.object({
   description: long.default(""),
   imageUrl,
   showImage: z.boolean().default(true),
-  price: z.number().int().nonnegative().max(1000000).nullable().default(null),
-  tags: z.array(tag).max(menuTags.length).default([]),
+  price: z
+    .number({ invalid_type_error: "Enter the price as a number" })
+    .int("Enter the price in pounds and pence")
+    .nonnegative("Prices cannot be negative")
+    .max(menuLimits.maxPrice, "Prices must be £10,000 or less")
+    .nullable()
+    .default(null),
+  // Repeated tags are harmless but would show twice on the website.
+  tags: z
+    .array(tag)
+    .max(menuTags.length)
+    .default([])
+    .transform((tags) => [...new Set(tags)]),
 });
 const sectionSchema = z.object({
   id,
   title: short.min(1, "Every section needs a title"),
   description: long.default(""),
   imageUrl,
-  items: z.array(itemSchema).max(100),
+  items: z
+    .array(itemSchema)
+    .max(
+      menuLimits.dishesPerSection,
+      `A section can hold up to ${menuLimits.dishesPerSection} dishes`,
+    ),
 });
 const themeSchema: z.ZodType<MenuTheme, z.ZodTypeDef, unknown> = z.object({
   layout: z.enum(["classic", "two-column", "cards"]).default("classic"),
@@ -77,7 +105,9 @@ const contentSchema = z.object({
   footerNote: long.default(""),
   showPrices: z.boolean().default(false),
   theme: themeSchema,
-  sections: z.array(sectionSchema).max(30),
+  sections: z
+    .array(sectionSchema)
+    .max(menuLimits.sections, `A menu can have up to ${menuLimits.sections} sections`),
 });
 
 export type MenuItem = z.infer<typeof itemSchema>;
@@ -134,14 +164,17 @@ export function suggestedSection(s: State, recipe: Recipe) {
   return "Starters & sides";
 }
 
-function itemFromRecipe(recipe: Recipe): MenuItem {
+// Recipe fields are free text owned by the recipe editor, so clamp them to the
+// menu's own rules; a generated menu must always be saveable and publishable.
+export function itemFromRecipe(recipe: Recipe): MenuItem {
+  const image = recipe.imageUrl && isMenuImageUrl(recipe.imageUrl) ? recipe.imageUrl : "";
   return {
     id: newId(),
     recipeId: recipe.id,
-    name: recipe.name,
-    description: recipe.variant,
-    imageUrl: recipe.imageUrl || "",
-    showImage: !!recipe.imageUrl,
+    name: (recipe.name || "").trim().slice(0, menuLimits.shortText) || "Untitled dish",
+    description: (recipe.variant || "").slice(0, menuLimits.longText),
+    imageUrl: image,
+    showImage: !!image,
     price: null,
     tags: [],
   };
@@ -162,8 +195,11 @@ export function generateMenu(
       imageUrl: "",
       items: [],
     });
-  for (const recipe of seasonRecipes(s, year, name))
-    sections.get(suggestedSection(s, recipe))!.items.push(itemFromRecipe(recipe));
+  for (const recipe of seasonRecipes(s, year, name)) {
+    const section = sections.get(suggestedSection(s, recipe))!;
+    if (section.items.length < menuLimits.dishesPerSection)
+      section.items.push(itemFromRecipe(recipe));
+  }
   return {
     id: newId(),
     year,
@@ -186,6 +222,8 @@ export function generateMenu(
 }
 
 // Add recipes newly placed in the season without touching owner edits.
+// Returns how many dishes were added; recipes that would push a section or the
+// menu past its limits are left out so the menu always stays saveable.
 export function syncMenu(s: State, menu: Menu) {
   const present = new Set(
     menu.sections.flatMap((section) =>
@@ -195,16 +233,20 @@ export function syncMenu(s: State, menu: Menu) {
   const missing = seasonRecipes(s, menu.year, menu.season).filter(
     (recipe) => !present.has(recipe.id),
   );
+  let added = 0;
   for (const recipe of missing) {
     const title = suggestedSection(s, recipe);
     let section = menu.sections.find((x) => x.title === title);
     if (!section) {
+      if (menu.sections.length >= menuLimits.sections) continue;
       section = { id: newId(), title, description: "", imageUrl: "", items: [] };
       menu.sections.push(section);
     }
+    if (section.items.length >= menuLimits.dishesPerSection) continue;
     section.items.push(itemFromRecipe(recipe));
+    added++;
   }
-  return missing.length;
+  return added;
 }
 
 // Dishes whose recipe is no longer active in this season's collection.
@@ -262,6 +304,56 @@ export function hasUnpublishedChanges(menu: Menu) {
   );
 }
 
+export type MenuValidation =
+  | { ok: true; content: MenuContent }
+  | { ok: false; issues: string[] };
+
+// Turns schema errors into messages an owner can act on, naming the section
+// and dish ("Mains, dish 2: Every dish needs a name") instead of a raw path.
+export function validateMenuContent(value: unknown): MenuValidation {
+  const result = contentSchema.safeParse(value);
+  if (result.success) return { ok: true, content: result.data };
+  const raw = (value && typeof value === "object" ? value : {}) as {
+    sections?: { title?: unknown; items?: { name?: unknown }[] }[];
+  };
+  const fieldNames: Record<string, string> = {
+    title: "Menu title",
+    intro: "Introduction",
+    footerNote: "Footer note",
+    description: "Description",
+    name: "Dish name",
+    imageUrl: "Photo",
+    price: "Price",
+    tags: "Dietary tags",
+    theme: "Design",
+  };
+  const issues = result.error.issues.map((issue) => {
+    const [first, sectionIndex, second, itemIndex, field] = issue.path;
+    if (first === "sections" && typeof sectionIndex === "number") {
+      const section = raw.sections?.[sectionIndex];
+      const sectionTitle =
+        typeof section?.title === "string" && section.title.trim()
+          ? `“${section.title.trim()}”`
+          : `Section ${sectionIndex + 1}`;
+      if (second === "items" && typeof itemIndex === "number") {
+        const name = section?.items?.[itemIndex]?.name;
+        const dish =
+          typeof name === "string" && name.trim() && field !== "name"
+            ? `“${name.trim()}”`
+            : `dish ${itemIndex + 1}`;
+        return `${sectionTitle}, ${dish}: ${issue.message}`;
+      }
+      if (second === "items") return `${sectionTitle}: ${issue.message}`;
+      return `${sectionTitle}: ${issue.message}`;
+    }
+    if (first === "theme") return `Design: ${issue.message}`;
+    if (typeof first === "string" && fieldNames[first] && first !== "sections")
+      return `${fieldNames[first]}: ${issue.message}`;
+    return issue.message;
+  });
+  return { ok: false, issues: [...new Set(issues)] };
+}
+
 export function menuCommand(
   s: State,
   type: string,
@@ -295,7 +387,15 @@ export function menuCommand(
     }
     case "menu-save": {
       const menu = find();
-      const content = contentSchema.parse(p);
+      // Optimistic check per menu: an editor that started from an older copy
+      // (another tab or device saved since) must not silently overwrite it.
+      if (typeof p.baseUpdatedAt === "string" && p.baseUpdatedAt !== menu.updatedAt)
+        throw Error(
+          "This menu was changed in another window. Reload to see the latest version before editing.",
+        );
+      const checked = validateMenuContent(p);
+      if (!checked.ok) throw Error(checked.issues.join("\n"));
+      const content = checked.content;
       const ids = [
         ...content.sections.map((x) => x.id),
         ...content.sections.flatMap((x) => x.items.map((i) => i.id)),
@@ -307,7 +407,10 @@ export function menuCommand(
     }
     case "menu-sync": {
       const menu = find();
-      syncMenu(s, menu);
+      if (!syncMenu(s, menu))
+        throw Error(
+          `There are no new ${menu.season} ${menu.year} recipes to add, or the menu has reached its limit of ${menuLimits.dishesPerSection} dishes per section.`,
+        );
       menu.updatedAt = at;
       return menu.id;
     }
@@ -315,6 +418,11 @@ export function menuCommand(
       const menu = find();
       if (!menu.sections.some((section) => section.items.length))
         throw Error("Add at least one dish before publishing");
+      // Generated and synced content never passed through menu-save, so check
+      // the whole menu against the same rules before it reaches the website.
+      const checked = validateMenuContent(menu);
+      if (!checked.ok)
+        throw Error(`Fix these before publishing:\n${checked.issues.join("\n")}`);
       for (const other of s.menus)
         if (other.id !== menu.id) {
           delete other.published;

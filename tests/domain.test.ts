@@ -1118,6 +1118,88 @@ test("older workspaces without menus normalise and generation is pure", () => {
   assert.equal(generateMenu(sampleState(), menuYear, "Summer").sections.length > 0, true);
 });
 
+import { validateMenuContent, syncMenu, menuLimits, itemFromRecipe } from "../lib/menu";
+test("menu validation names the section and dish that needs fixing", () => {
+  const menu = structuredClone(sampleState().menus[0]);
+  const section = menu.sections[0];
+  section.items[1].name = "   ";
+  section.items[0].price = -100;
+  menu.sections[1].title = "";
+  menu.title = "";
+  const result = validateMenuContent(menu);
+  assert.equal(result.ok, false);
+  const issues = result.ok ? [] : result.issues;
+  assert.ok(issues.includes(`“${section.title}”, dish 2: Every dish needs a name`), issues.join("|"));
+  assert.ok(issues.includes(`“${section.title}”, “${section.items[0].name}”: Prices cannot be negative`), issues.join("|"));
+  assert.ok(issues.includes("Section 2: Every section needs a title"), issues.join("|"));
+  assert.ok(issues.includes("Menu title: Add a menu title"), issues.join("|"));
+  assert.ok(issues.every((x) => !/sections \d|items \d/.test(x)), "no raw schema paths");
+  let s = sampleState();
+  assert.throws(
+    () => act(s, "menu-save", { ...menu, id: s.menus[0].id }),
+    (e: Error) => e.message.includes("Every dish needs a name") && !e.message.includes("sections 0"),
+  );
+  // Duplicate tags are folded, oversized prices refused.
+  const tagged = structuredClone(s.menus[0]);
+  tagged.sections[0].items[0].tags = ["V", "V", "GF"];
+  s = act(s, "menu-save", tagged);
+  assert.deepEqual(s.menus[0].sections[0].items[0].tags, ["V", "GF"]);
+  tagged.sections[0].items[0].price = menuLimits.maxPrice + 1;
+  assert.throws(() => act(s, "menu-save", tagged), /£10,000 or less/);
+});
+test("menu saves from an out-of-date editor are refused instead of overwriting", () => {
+  let s = sampleState();
+  const base = structuredClone(s.menus[0]);
+  s = act(s, "menu-save", { ...base, title: "First tab", baseUpdatedAt: base.updatedAt }, "first");
+  // A second editor still holding the original copy.
+  assert.throws(
+    () => act(s, "menu-save", { ...base, title: "Second tab", baseUpdatedAt: base.updatedAt }),
+    /changed in another window/,
+  );
+  assert.equal(s.menus[0].title, "First tab");
+  // Saving again from the latest copy works.
+  s = act(s, "menu-save", { ...s.menus[0], title: "Second tab", baseUpdatedAt: s.menus[0].updatedAt });
+  assert.equal(s.menus[0].title, "Second tab");
+});
+test("generated and synced dishes always fit the menu rules", () => {
+  let s = sampleState();
+  const recipe = {
+    ...s.recipes[0],
+    name: "x".repeat(500),
+    variant: undefined as unknown as string,
+    imageUrl: "http://insecure.example/photo.jpg",
+  };
+  const item = itemFromRecipe(recipe);
+  assert.equal(item.name.length, menuLimits.shortText);
+  assert.equal(item.description, "");
+  assert.equal(item.imageUrl, "");
+  assert.equal(item.showImage, false);
+  // A section already at its limit is not overfilled by sync.
+  const menu = structuredClone(s.menus[0]);
+  const target = menu.sections[0];
+  while (target.items.length < menuLimits.dishesPerSection)
+    target.items.push({ ...target.items[0], id: crypto.randomUUID(), recipeId: undefined });
+  s = act(s, "recipe", {
+    ...s.recipes.find((r) => menu.sections[0].items.some((i) => i.recipeId === r.id))!,
+    id: undefined,
+    name: "One too many",
+    collections: [{ year: menu.year, season: menu.season }],
+  });
+  const added = syncMenu(s, menu);
+  assert.ok(validateMenuContent(menu).ok, "menu stays valid after sync");
+  assert.ok(target.items.length <= menuLimits.dishesPerSection);
+  assert.ok(added <= 1);
+});
+test("publishing checks the whole menu and sync explains when nothing is added", () => {
+  let s = sampleState();
+  const id = s.menus[0].id;
+  s.menus[0].sections[0].items[0].name = "";
+  assert.throws(() => act(s, "menu-publish", { id }), /Fix these before publishing:[\s\S]*Every dish needs a name/);
+  s = sampleState();
+  assert.throws(() => act(s, "menu-sync", { id: s.menus[0].id }), /no new Summer/);
+  assert.throws(() => act(s, "menu-publish", { id: "missing" }), /Menu not found/);
+});
+
 import { erasedName, erasedEmail } from "../lib/privacy";
 test("customer erasure anonymises personal data but keeps issued invoices and blocks active orders", () => {
   let s: State = sampleState();

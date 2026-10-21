@@ -1,5 +1,5 @@
 import type { Enquiry } from "./domain";
-import { sendEmail } from "./email";
+import { emailProvider, sendEmail } from "./email";
 import { config } from "./server";
 
 const escapeHtml = (value: string) =>
@@ -26,7 +26,8 @@ export async function notifyOwnerOfEnquiry({
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  if (!c.SMTP2GO_API_KEY || !c.EMAIL_FROM || !recipients.length)
+  const provider = emailProvider(c);
+  if (!provider || !c.EMAIL_FROM || !recipients.length)
     return { status: "not-configured" as const };
   const service = details.service === "corporate" ? "Corporate catering" : "Private dining";
   const rows: [string, string][] = [
@@ -42,7 +43,8 @@ export async function notifyOwnerOfEnquiry({
   ];
   const link = `${origin}/admin/orders?mode=live`;
   await sendEmail({
-    apiKey: c.SMTP2GO_API_KEY,
+    provider,
+    idempotencyKey: `enquiry:${reference}`,
     sender: c.EMAIL_FROM,
     to: recipients,
     subject: `New enquiry ${reference} · ${service}`,

@@ -29,7 +29,7 @@ export default function Page() {
         <p>
           When configured, AutoSous helps the owner review requests and
           Google Maps supports venue and journey planning. Email delivery uses
-          SMTP2GO, which also notifies the owner of each new enquiry with your
+          Resend or SMTP2GO, which also notifies the owner of each new enquiry with your
           name, contact details and event summary (never dietary details). The
           owner reviews dietary decisions and outgoing emails.
           Public venue searches do not include guest names or allergy details.

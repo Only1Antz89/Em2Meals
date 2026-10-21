@@ -26,6 +26,17 @@ npm run lint
 npm run build
 ```
 
+To check the API against a real Postgres (the unit tests use SQLite, which accepts some SQL that Postgres rejects), apply the migrations to a local database, then start the built app with the bundled Postgres driver and run the smoke tests in demo auth mode:
+
+```sh
+npm run build
+PGHOST=localhost PGUSER=postgres PGDATABASE=em2 AUTH_MODE=demo \
+  NODE_OPTIONS="--import ./tests/postgres-preload.mjs" npx next start -p 5173
+EM2_DEMO_AUTH=1 npm run test:api && npm run test:walkthrough
+```
+
+GitHub Actions runs the checks above and this Postgres run on every pull request.
+
 API smoke tests require the local development server and create clearly labelled local test enquiries. They refuse non-local URLs. They check identity rejection, forged local headers, input validation, enquiry idempotency, concurrent writes and missing integration credentials. Domain tests verify yields, variants, stock handling, cancellations, allergy review, historical snapshots and client-report isolation.
 
 ## Owner setup and integrations
@@ -45,8 +56,9 @@ Use **Vercel project environment variables** for production values; local `.env`
 | `GEMINI_API_KEY`      | Server-side Gemini API credential.                                            |
 | `GEMINI_MODEL`        | Defaults to `gemini-3.6-flash`; set a supported model for the Google project. |
 | `GOOGLE_MAPS_API_KEY` | Server-side key with Places API (New) and Routes API enabled.                 |
-| `SMTP2GO_API_KEY`     | SMTP2GO API credential with `/email/send` permission.                         |
-| `EMAIL_FROM`          | Verified business sender, e.g. `Fork Goodness Baked <hello@your-domain.example>`. |
+| `RESEND_API_KEY`      | Resend API key. When set, email is sent through Resend instead of SMTP2GO.    |
+| `SMTP2GO_API_KEY`     | SMTP2GO API credential with `/email/send` permission (used when no Resend key). |
+| `EMAIL_FROM`          | Sender on a domain verified with your email provider, e.g. `Fork Goodness Baked <hello@your-domain.example>`. |
 | `CRON_SECRET`         | Shared secret protecting the CRM digest endpoint.                            |
 
 Google services require a configured project, enabled APIs and billing as applicable. SMTP2GO requires a verified sender and an API key permitted to call `/email/send`. Configure budget controls and appropriate API restrictions with the provider. Secrets are not entered in browser forms. Redeploy after changing runtime variables. Until configured, the app reports **Setup required**, preserves saved records and supports manual review/route estimates/email drafts.

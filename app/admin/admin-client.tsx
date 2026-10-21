@@ -402,7 +402,6 @@ export default function Admin({
   initialMode?: "live" | "sample";
 }) {
   const [s, setS] = useState(emptyState()),
-    [revision, setRevision] = useState(0),
     [loaded, setLoaded] = useState(false),
     [lastUpdated, setLastUpdated] = useState(""),
     [error, setError] = useState(""),
@@ -412,6 +411,12 @@ export default function Admin({
     [edit, setEdit] = useState<Edit | null>(null);
   const mode = initialMode;
   const fetchGeneration = useRef(0);
+  // Refs, not state: back-to-back calls (an autosave followed by a publish)
+  // must see the revision and busy flag the previous call left behind, not the
+  // values captured when the handler was rendered.
+  const revision = useRef(0);
+  const inFlight = useRef(false);
+
   const page = section[0] || "";
   const { params: navigationParams } = useReportFilters();
   const selectedTab = navigationParams.get("tab") || "overview";
@@ -439,7 +444,7 @@ export default function Admin({
         setError("");
         setLastUpdated(new Date().toISOString());
         setS(j.state);
-        setRevision(j.revision);
+        revision.current = j.revision;
         setEnquiries(j.enquiries);
         setIntegrations(j.integrations);
         setLoaded(true);
@@ -469,7 +474,7 @@ export default function Admin({
         setError("");
         setLastUpdated(new Date().toISOString());
         setS(j.state);
-        setRevision(j.revision);
+        revision.current = j.revision;
         setEnquiries(j.enquiries);
         setIntegrations(j.integrations);
         setLoaded(true);
@@ -494,8 +499,9 @@ export default function Admin({
       window.removeEventListener("focus", refresh);
     };
   }, [loaded, busy, edit, mode, reload]);
-  async function run(type: string, payload: unknown) {
-    if (busy) throw Error("A save is already in progress");
+  async function run(type: string, payload: unknown): Promise<State> {
+    if (inFlight.current) throw Error("A save is already in progress");
+    inFlight.current = true;
     ++fetchGeneration.current;
     setBusy(true);
     try {
@@ -504,7 +510,7 @@ export default function Admin({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
-          revision,
+          revision: revision.current,
           command: { id: crypto.randomUUID(), type, payload },
         }),
       });
@@ -517,8 +523,10 @@ export default function Admin({
       ++fetchGeneration.current;
       setLastUpdated(new Date().toISOString());
       setS(j.state);
-      setRevision(j.revision);
+      revision.current = j.revision;
+      return j.state;
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -526,7 +534,8 @@ export default function Admin({
     path: string,
     payload: unknown,
   ): Promise<T> {
-    if (busy) throw Error("Another request is in progress");
+    if (inFlight.current) throw Error("Another request is in progress");
+    inFlight.current = true;
     ++fetchGeneration.current;
     setBusy(true);
     try {
@@ -551,10 +560,11 @@ export default function Admin({
         ++fetchGeneration.current;
         setLastUpdated(new Date().toISOString());
         setS(j.state);
-        if (typeof j.revision === "number") setRevision(j.revision);
+        if (typeof j.revision === "number") revision.current = j.revision;
       }
       return j;
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -2022,7 +2032,7 @@ function SettingsPage() {
             [
               "email",
               "Business email",
-              "SMTP2GO delivery after review and an explicit send.",
+              "Resend or SMTP2GO delivery after review and an explicit send.",
             ],
             [
               "owner",

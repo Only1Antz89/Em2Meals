@@ -26,9 +26,11 @@ import {
   allergenHints,
   currentSeason,
   hasUnpublishedChanges,
+  menuLimits,
   publicMenu,
   seasonRecipes,
   staleItems,
+  validateMenuContent,
   type Menu,
   type MenuItem,
   type MenuSection,
@@ -59,12 +61,12 @@ const penceToPounds = (pence: number | null) =>
   pence == null ? "" : (pence / 100).toFixed(2).replace(/\.00$/, "");
 
 export default function MenuStudio() {
-  const { s, mode, run, busy } = useOps();
+  const { s, mode, run, reload, busy } = useOps();
   const menus = useMemo(() => s.menus || [], [s.menus]);
   const [year, setYear] = useState(today().slice(0, 4));
   const [season, setSeason] = useState<Season>(currentSeason());
   const [local, setLocal] = useState<Menu | null>(null);
-  const [status, setStatus] = useState<"saved" | "saving" | "error">("saved");
+  const [status, setStatus] = useState<"saved" | "saving" | "error" | "conflict">("saved");
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"content" | "dishes" | "design">("content");
   const [view, setView] = useState<View>("desktop");
@@ -97,35 +99,101 @@ export default function MenuStudio() {
     });
   };
 
-  const save = useCallback(async () => {
-    if (!local) return;
+  // Resolves true once the local copy is safely stored (or there was nothing
+  // to store). Invalid content is held locally with a list of what to fix
+  // rather than sent, and a workspace conflict caused by an unrelated change
+  // (an enquiry arriving, another panel saving) is retried once on the latest
+  // revision. The server refuses the retry if this menu itself changed.
+  // Checked on every edit so the owner sees what to fix as they type.
+  const checked = useMemo(() => (local ? validateMenuContent(local) : null), [local]);
+  const issues = checked && !checked.ok ? checked.issues : [];
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!local) return true;
     const snapshot = local;
+    const checked = validateMenuContent(snapshot);
+    if (!checked.ok) return false;
     setStatus("saving");
+    // Send only editable content: never the published snapshot or metadata.
+    const payload = { ...checked.content, id: snapshot.id, baseUpdatedAt: snapshot.updatedAt };
     try {
-      await run("menu-save", snapshot);
-      setLocal((current) => (current === snapshot ? null : current));
+      let next;
+      try {
+        next = await run("menu-save", payload);
+      } catch (e) {
+        if (!/Another change was saved/.test((e as Error).message)) throw e;
+        await reload();
+        next = await run("menu-save", payload);
+      }
+      const updatedAt = next.menus?.find((m) => m.id === snapshot.id)?.updatedAt;
+      // Edits made while saving stay local, rebased on the version just saved.
+      setLocal((current) =>
+        current === snapshot ? null : current && updatedAt ? { ...current, updatedAt } : current,
+      );
       setStatus("saved");
       setError("");
+      return true;
     } catch (e) {
-      setStatus("error");
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      setStatus(/changed in another window/.test(message) ? "conflict" : "error");
+      setError(message);
+      return false;
     }
-  }, [local, run]);
+  }, [local, run, reload]);
 
+  // A plain failure waits for the next edit or "Try saving again" rather than
+  // retrying in a loop; leaving the invalid state saves straight away.
+  const blocked = issues.length > 0 || status === "conflict";
   useEffect(() => {
-    if (!local || busy) return;
+    if (!local || busy || blocked) return;
     const timer = setTimeout(() => void save(), 1200);
     return () => clearTimeout(timer);
-  }, [local, busy, save]);
+  }, [local, busy, blocked, save]);
 
-  async function action(type: string, payload: Record<string, unknown>) {
+  // Warn before leaving with edits that have not reached the server.
+  useEffect(() => {
+    if (!local) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [local]);
+
+  const discardLocal = async () => {
+    setLocal(null);
+    setError("");
+    setStatus("saved");
+    await reload();
+  };
+
+  async function action(
+    type: string,
+    payload: Record<string, unknown>,
+    { saveFirst = true } = {},
+  ) {
     setError("");
     try {
-      if (local) await save();
+      // Never publish or sync over edits that failed to save: the owner would
+      // see one menu in the editor and another on the website.
+      if (saveFirst && local && !(await save())) return;
       await run(type, payload);
     } catch (e) {
       setError((e as Error).message);
     }
+  }
+
+  // Switching menus first stores the current edits; otherwise the next edit
+  // would start from the newly selected menu and drop them.
+  async function choose(nextYear: string, nextSeason: Season) {
+    if (local && !(await save())) {
+      if (!confirm("This menu has changes that could not be saved. Discard them and switch?"))
+        return;
+      setLocal(null);
+      setError("");
+      setStatus("saved");
+    }
+    setYear(nextYear);
+    setSeason(nextSeason);
   }
 
   // Preview frame: the real public page components rendered at true width.
@@ -189,11 +257,11 @@ export default function MenuStudio() {
     <div className="menu-studio">
       <div className="menu-studio__bar">
         <div className="menu-studio__pickers">
-          <Pick label="Year" value={year} onChange={setYear} options={years} />
+          <Pick label="Year" value={year} onChange={(value) => void choose(value, season)} options={years} />
           <Pick
             label="Season"
             value={season}
-            onChange={(value) => setSeason(value as Season)}
+            onChange={(value) => void choose(year, value as Season)}
             options={[...menuSeasons]}
           />
         </div>
@@ -207,11 +275,15 @@ export default function MenuStudio() {
               <Tag>Draft</Tag>
             )}
             <small role="status">
-              {status === "saving" || (unsaved && status !== "error")
-                ? "Saving…"
-                : status === "error"
-                  ? "Not saved"
-                  : "All changes saved"}
+              {issues.length > 0
+                ? "Not saved · needs attention"
+                : status === "conflict"
+                  ? "Not saved · changed elsewhere"
+                  : status === "error"
+                    ? "Not saved"
+                    : status === "saving" || unsaved
+                      ? "Saving…"
+                      : "All changes saved"}
             </small>
           </div>
         )}
@@ -242,7 +314,7 @@ export default function MenuStudio() {
             )}
             <Button
               size="sm"
-              disabled={busy || (!!menu.published && !changedSincePublish)}
+              disabled={busy || issues.length > 0 || (!!menu.published && !changedSincePublish)}
               onClick={() => void action("menu-publish", { id: menu.id })}
             >
               {menu.published ? "Publish changes" : "Publish to website"}
@@ -256,10 +328,31 @@ export default function MenuStudio() {
           the live workspace menu appears on the website.
         </p>
       )}
-      {error && (
-        <p role="alert" className="error-message">
-          {error}
-        </p>
+      {(error || issues.length > 0) && (
+        <div role="alert" className="error-message">
+          {issues.length > 0 ? (
+            <>
+              <p>Changes are not saved yet. Please fix:</p>
+              <ul>
+                {issues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            error.split("\n").map((line, index) => <p key={index}>{line}</p>)
+          )}
+          {status === "conflict" && (
+            <Button variant="outline" size="sm" onClick={() => void discardLocal()}>
+              Discard my changes and load the latest
+            </Button>
+          )}
+          {status === "error" && unsaved && (
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void save()}>
+              Try saving again
+            </Button>
+          )}
+        </div>
       )}
 
       {!menu ? (
@@ -316,9 +409,11 @@ export default function MenuStudio() {
                 size="sm"
                 disabled={busy}
                 onClick={() => {
-                  if (confirm(`Delete the ${menu.season} ${menu.year} menu? This cannot be undone.`)) {
+                  const live = menu.published && mode === "live" ? " It will also be removed from the website." : "";
+                  if (confirm(`Delete the ${menu.season} ${menu.year} menu?${live} This cannot be undone.`)) {
                     setLocal(null);
-                    void action("menu-delete", { id: menu.id });
+                    setStatus("saved");
+                    void action("menu-delete", { id: menu.id }, { saveFirst: false });
                   }
                 }}
               >
@@ -381,10 +476,7 @@ export default function MenuStudio() {
                   key={m.id}
                   type="button"
                   className={m.id === menu?.id ? "active" : ""}
-                  onClick={() => {
-                    setYear(String(m.year));
-                    setSeason(m.season);
-                  }}
+                  onClick={() => void choose(String(m.year), m.season)}
                 >
                   <strong>{m.title}</strong>
                   <small>
@@ -545,7 +637,7 @@ function DishesTab({ menu, update, onSync }: TabProps & { onSync: () => void }) 
             ))}
           </ol>
           <div className="menu-editor-add">
-            {unused.length > 0 && (
+            {unused.length > 0 && section.items.length < menuLimits.dishesPerSection && (
               <Pick
                 label="Add a recipe"
                 value=""
@@ -571,6 +663,12 @@ function DishesTab({ menu, update, onSync }: TabProps & { onSync: () => void }) 
             <Button
               variant="outline"
               size="sm"
+              disabled={section.items.length >= menuLimits.dishesPerSection}
+              title={
+                section.items.length >= menuLimits.dishesPerSection
+                  ? `A section can hold up to ${menuLimits.dishesPerSection} dishes`
+                  : undefined
+              }
               onClick={() =>
                 editSection(sectionIndex, (x) => {
                   x.items.push({ id: newId(), name: "New dish", description: "", imageUrl: "", showImage: false, price: null, tags: [] });
@@ -584,6 +682,12 @@ function DishesTab({ menu, update, onSync }: TabProps & { onSync: () => void }) 
       ))}
       <Button
         variant="outline"
+        disabled={menu.sections.length >= menuLimits.sections}
+        title={
+          menu.sections.length >= menuLimits.sections
+            ? `A menu can have up to ${menuLimits.sections} sections`
+            : undefined
+        }
         onClick={() =>
           update((d) => {
             d.sections.push({ id: newId(), title: "New section", description: "", imageUrl: "", items: [] });
@@ -622,6 +726,18 @@ function DishEditor({
   remove: () => void;
 }) {
   const [price, setPrice] = useState(penceToPounds(item.price));
+  const [priceError, setPriceError] = useState("");
+  // Follow price changes that arrive from elsewhere (a reload or another tab)
+  // while keeping whatever the owner is typing for their own edits.
+  const [seenPrice, setSeenPrice] = useState(item.price);
+  if (seenPrice !== item.price) {
+    setSeenPrice(item.price);
+    const typed = price.trim() === "" ? null : Math.round(Number(price) * 100);
+    if (typed !== item.price) {
+      setPrice(penceToPounds(item.price));
+      setPriceError("");
+    }
+  }
   return (
     <li className="menu-editor-dish">
       <details>
@@ -665,11 +781,29 @@ function DishEditor({
               onChange={(value) => {
                 setPrice(value);
                 const pounds = Number(value);
+                const problem =
+                  value.trim() === ""
+                    ? ""
+                    : !Number.isFinite(pounds)
+                      ? "Enter a number, like 12.50"
+                      : pounds < 0
+                        ? "Prices cannot be negative"
+                        : pounds * 100 > menuLimits.maxPrice
+                          ? "Prices must be £10,000 or less"
+                          : "";
+                setPriceError(problem);
+                // An invalid entry leaves the last good price in place.
+                if (problem) return;
                 change((x) => {
-                  x.price = value === "" || !Number.isFinite(pounds) || pounds < 0 ? null : Math.round(pounds * 100);
+                  x.price = value.trim() === "" ? null : Math.round(pounds * 100);
                 });
               }}
             />
+            {priceError && (
+              <p role="alert" className="error-message">
+                {priceError}
+              </p>
+            )}
             {sections.length > 1 && (
               <Pick
                 label="Move to section"

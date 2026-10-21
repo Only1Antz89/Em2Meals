@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { IngredientName } from "./ingredient-name";
 import { Field, Pick, Notes } from "@/components/form-controls";
 import {
   AutoSousFormattedAnswer,
@@ -1427,7 +1428,7 @@ function MovementHistory() {
           );
           return [
             new Date(movement.at).toLocaleString("en-GB"),
-            ingredient?.name || "Unknown ingredient",
+            <IngredientName key="name" id={ingredient?.id} />,
             <StockCategory key="category" value={ingredient?.category} />,
             `${Math.round(movement.quantity * 100) / 100} ${ingredient?.unit || ""}`,
             movement.reason,
@@ -1484,7 +1485,9 @@ function BatchName({
 }) {
   return (
     <span className="stock-batch-name">
-      <b>{name || "Unknown ingredient"}</b>
+      <b>
+        <IngredientName id={batch.ingredientId} name={name} />
+      </b>
       <small className="subtext">
         {batch.id.slice(0, 8)} · received {batch.intake}
       </small>

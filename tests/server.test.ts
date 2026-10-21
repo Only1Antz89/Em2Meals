@@ -266,7 +266,7 @@ test("Resend is used when its key is set and failures are not recorded as sent",
   try {
     const failed = await send(req({ draftId: "draft", confirm: true }));
     assert.equal(failed.status, 400);
-    assert.match((await failed.json()).error, /Resend rejected the email \(422\): Invalid from/);
+    assert.match(((await failed.json()) as { error: string }).error, /Resend rejected the email \(422\): Invalid from/);
     assert.equal(sqlite.prepare("SELECT status FROM email_deliveries WHERE id='draft'").get()?.status, "failed");
     assert.equal(calls[0].url, "https://api.resend.com/emails");
     const headers = calls[0].init?.headers as Record<string, string>;
@@ -284,7 +284,7 @@ test("Resend is used when its key is set and failures are not recorded as sent",
     };
     const sent = await send(req({ draftId: "draft", confirm: true }));
     assert.equal(sent.status, 200);
-    assert.equal((await sent.json()).id, "resend-email-1");
+    assert.equal(((await sent.json()) as { id: string }).id, "resend-email-1");
     assert.equal((await loadState()).state.drafts[0].deliveryStatus, "sent");
   } finally {
     globalThis.fetch = originalFetch;

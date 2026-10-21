@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
-import Image from "next/image";
-import { AlertTriangle, Flame, Info, Refrigerator, ShieldCheck, Snowflake, Package, PackageOpen, ExternalLink } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ingredientReferenceFor,
@@ -81,8 +79,7 @@ export function IngredientInfo({ name, category, allergens, children, className 
             }
           }}
         >
-          <span>{children ?? name}</span>
-          <Info aria-hidden="true" size={12} className={styles.triggerIcon} />
+          {children ?? name}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -108,24 +105,15 @@ export function IngredientInfoCard({ name, category, allergens }: Omit<Props, "c
   const contains = [...new Set([...reference.allergens, ...(recorded || [])])];
   const checkLabel = (reference.checkLabel || []).filter((allergen) => !contains.includes(allergen));
   const shelfLife = [
-    { icon: Refrigerator, label: "Fridge", value: reference.shelfLife.fridge },
-    { icon: Snowflake, label: "Freezer", value: reference.shelfLife.freezer },
-    { icon: Package, label: "Cupboard", value: reference.shelfLife.ambient },
-    { icon: PackageOpen, label: "Once opened", value: reference.shelfLife.opened },
+    { label: "Fridge", value: reference.shelfLife.fridge },
+    { label: "Freezer", value: reference.shelfLife.freezer },
+    { label: "Cupboard", value: reference.shelfLife.ambient },
+    { label: "Once opened", value: reference.shelfLife.opened },
   ].filter((row) => row.value);
 
   return (
     <article className={styles.body} aria-label={`${name} guide`}>
       <header className={styles.header}>
-        <div className={styles.image} data-category={reference.category}>
-          {reference.image ? (
-            <Image src={reference.image} alt={reference.name} fill sizes="72px" />
-          ) : (
-            <span role="img" aria-label={`${reference.name} illustration`}>
-              {reference.emoji}
-            </span>
-          )}
-        </div>
         <div>
           <h4 className={styles.title}>{name}</h4>
           <p className={styles.subtitle}>
@@ -133,7 +121,7 @@ export function IngredientInfoCard({ name, category, allergens }: Omit<Props, "c
           </p>
           {reference.highRisk ? (
             <span className={styles.riskChip}>
-              <AlertTriangle aria-hidden="true" size={11} /> High-risk food
+              High-risk food
             </span>
           ) : null}
         </div>
@@ -154,7 +142,7 @@ export function IngredientInfoCard({ name, category, allergens }: Omit<Props, "c
           ))}
           {!contains.length && !checkLabel.length ? (
             <span className={styles.none}>
-              <ShieldCheck aria-hidden="true" size={11} /> None of the 14
+              None of the 14
             </span>
           ) : null}
         </div>
@@ -162,7 +150,7 @@ export function IngredientInfoCard({ name, category, allergens }: Omit<Props, "c
         {reference.allergenNote ? <p className={styles.hint}>{reference.allergenNote}</p> : null}
         {missing.length ? (
           <p className={styles.warning}>
-            <AlertTriangle aria-hidden="true" size={12} /> Your ingredient record doesn&rsquo;t list {missing.map(allergenLabel).join(", ")}.
+            Your ingredient record doesn&rsquo;t list {missing.map(allergenLabel).join(", ")}.
           </p>
         ) : null}
       </section>
@@ -171,11 +159,9 @@ export function IngredientInfoCard({ name, category, allergens }: Omit<Props, "c
         <section className={styles.section}>
           <h5>Typical shelf life</h5>
           <dl className={styles.shelf}>
-            {shelfLife.map(({ icon: Icon, label, value }) => (
+            {shelfLife.map(({ label, value }) => (
               <div key={label}>
-                <dt>
-                  <Icon aria-hidden="true" size={12} /> {label}
-                </dt>
+                <dt>{label}</dt>
                 <dd>{value}</dd>
               </div>
             ))}
@@ -190,9 +176,7 @@ export function IngredientInfoCard({ name, category, allergens }: Omit<Props, "c
 
       {reference.cooking ? (
         <section className={styles.section}>
-          <h5>
-            <Flame aria-hidden="true" size={12} /> Cooking
-          </h5>
+          <h5>Cooking</h5>
           <p>{reference.cooking}</p>
         </section>
       ) : null}
@@ -231,7 +215,7 @@ export function IngredientInfoCard({ name, category, allergens }: Omit<Props, "c
         <p>
           {generic ? "No specific guide for this item yet. " : ""}Guide only: the pack&rsquo;s use-by date and your food safety plan take priority.{" "}
           <a href={ingredientReferenceSources[0].url} target="_blank" rel="noreferrer">
-            FSA guidance <ExternalLink aria-hidden="true" size={10} />
+            FSA guidance
           </a>
         </p>
       </footer>

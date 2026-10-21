@@ -18,7 +18,3 @@ The following original images were generated for Fork Goodness Baked with OpenAI
 - `public/images/em2-hero-chef.png` — Black woman chef finishing a plated meal in a professional kitchen.
 - `public/images/em2-private-chef.png` — Black private chef serving hosts in a London home setting.
 - `public/images/em2-corporate-team.png` — Black catering staff preparing a working lunch in a London office.
-
-## Ingredient guide images
-
-Ingredient hover cards (`components/ingredient-info.tsx`) show a Unicode emoji on a coloured tile as the generic product image, so no third-party image licence is needed. To use a photo instead, add it as `public/images/ingredients/<id>.jpg` (square, at least 144×144), set `image` on that entry in `lib/ingredient-reference-data.ts`, and credit it here with its source and licence. Only use photos that are free for commercial use (for example Pexels, Unsplash or your own photography).

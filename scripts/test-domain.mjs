@@ -2,17 +2,19 @@ import { build } from "esbuild";
 import { mkdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 await mkdir(".sites-runtime/tests", { recursive: true });
+const tests = ["domain", "ingredient-reference"];
 await build({
-  entryPoints: ["tests/domain.test.ts"],
+  entryPoints: tests.map((name) => `tests/${name}.test.ts`),
   bundle: true,
   platform: "node",
   format: "esm",
-  outfile: ".sites-runtime/tests/domain.test.mjs",
+  outdir: ".sites-runtime/tests",
+  outExtension: { ".js": ".mjs" },
 });
 process.exit(
   spawnSync(
     process.execPath,
-    ["--test", ".sites-runtime/tests/domain.test.mjs"],
+    ["--test", ...tests.map((name) => `.sites-runtime/tests/${name}.test.mjs`)],
     { stdio: "inherit" },
   ).status ?? 1,
 );

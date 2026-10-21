@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useOps } from "./ops-context";
+import { IngredientName } from "./ingredient-name";
 import { Panel, GridTable, Tag } from "./admin-client";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -70,7 +71,7 @@ export function StockSummary() {
           const unit = (q: number) => `${+q.toFixed(2)} ${i.unit}`;
           return [
             <span key="cell-0">
-              {i.category && symbols[i.category]} {i.name}
+              {i.category && symbols[i.category]} <IngredientName id={i.id} />
             </span>,
             unit(batches.reduce((n, b) => n + b.quantity, 0)),
             unit(s.orders.reduce((n, o) => n + reservedFor(s, o, i.id), 0)),
@@ -146,7 +147,7 @@ export function OrderStock({ order: o }: { order: Order }) {
                 .slice(0, 10)
             : "";
           return [
-            i.name,
+            <IngredientName key="name" id={i.id} />,
             `${+l.quantity.toFixed(2)} ${i.unit}`,
             `${+l.available.toFixed(2)} ${i.unit}`,
             <Tag key="cell-3" tone={l.shortage > 0 ? "red" : "green"}>
@@ -799,7 +800,7 @@ export function SupplierInsights({
                 (item) => item.id === offering.ingredientId,
               );
               return [
-                ingredient?.name || "Unknown ingredient",
+                <IngredientName key="name" id={ingredient?.id} />,
                 `${offering.packQuantity} ${ingredient?.unit || "units"}`,
                 offering.packCost === null
                   ? "Price not recorded"
@@ -1091,7 +1092,7 @@ export function SupplierInsights({
             "",
           ]}
           rows={s.offerings.map((o) => [
-            s.ingredients.find((i) => i.id === o.ingredientId)?.name,
+            <IngredientName key="name" id={o.ingredientId} />,
             s.suppliers.find((x) => x.id === o.supplierId)?.name,
             `${o.packQuantity} ${s.ingredients.find((i) => i.id === o.ingredientId)?.unit}`,
             o.packCost === null ? "Unknown" : money(o.packCost),

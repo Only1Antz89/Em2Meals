@@ -21,6 +21,7 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { Field, Notes, Pick } from "@/components/form-controls";
+import { IngredientName } from "./ingredient-name";
 import { Panel, GridTable, Tag, draftFields } from "./admin-client";
 import { useOps } from "./ops-context";
 import {
@@ -341,7 +342,8 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                     })
                   ).map((l, i) => (
                     <li key={i}>
-                      {l.name} · {Math.round(l.quantity * 100) / 100}{" "}
+                      <IngredientName name={l.name} id={l.ingredientId} />{" "}
+                      · {Math.round(l.quantity * 100) / 100}{" "}
                       {s.ingredients.find((i) => i.id === l.ingredientId)?.unit}{" "}
                       · {money(Math.round(l.cost))}
                     </li>
@@ -386,7 +388,7 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
           <GridTable
             heads={["Ingredient", "Gross quantity", "Reserved"]}
             rows={Object.entries(required).map(([id, quantity]) => [
-              s.ingredients.find((i) => i.id === id)?.name,
+              <IngredientName key="name" id={id} />,
               `${Math.round(quantity * 100) / 100} ${s.ingredients.find((i) => i.id === id)?.unit}`,
               o.consumed
                 ? "Consumed"

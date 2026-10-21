@@ -2022,7 +2022,7 @@ function SettingsPage() {
             [
               "email",
               "Business email",
-              "SMTP2GO delivery after review and an explicit send.",
+              "Resend or SMTP2GO delivery after review and an explicit send.",
             ],
             [
               "owner",

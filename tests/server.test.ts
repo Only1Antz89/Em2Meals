@@ -253,6 +253,44 @@ test("email sending fails closed when SMTP2GO is not configured or returns HTTP 
     env.SMTP2GO_API_KEY = originalKey;
   }
 });
+test("Resend is used when its key is set and failures are not recorded as sent", async () => {
+  resetDB();
+  draftState();
+  env.RESEND_API_KEY = "fake-resend-key";
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), init });
+    return Response.json({ statusCode: 422, name: "validation_error", message: "Invalid from" }, { status: 422 });
+  };
+  try {
+    const failed = await send(req({ draftId: "draft", confirm: true }));
+    assert.equal(failed.status, 400);
+    assert.match((await failed.json()).error, /Resend rejected the email \(422\): Invalid from/);
+    assert.equal(sqlite.prepare("SELECT status FROM email_deliveries WHERE id='draft'").get()?.status, "failed");
+    assert.equal(calls[0].url, "https://api.resend.com/emails");
+    const headers = calls[0].init?.headers as Record<string, string>;
+    assert.equal(headers.Authorization, "Bearer fake-resend-key");
+    const body = JSON.parse(String(calls[0].init?.body));
+    assert.equal(body.from, "test@example.com");
+    assert.deepEqual(body.to, ["supplier@example.com"]);
+    assert.equal(typeof body.text, "string");
+
+    resetDB();
+    draftState();
+    globalThis.fetch = async (input) => {
+      calls.push({ url: String(input) });
+      return Response.json({ id: "resend-email-1" });
+    };
+    const sent = await send(req({ draftId: "draft", confirm: true }));
+    assert.equal(sent.status, 200);
+    assert.equal((await sent.json()).id, "resend-email-1");
+    assert.equal((await loadState()).state.drafts[0].deliveryStatus, "sent");
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete env.RESEND_API_KEY;
+  }
+});
 test("CRM digest sends once per London day for relationships needing attention", async () => {
   resetDB();
   const state = emptyState();

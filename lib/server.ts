@@ -29,6 +29,7 @@ export const config = () => {
     GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
     OWNER_EMAILS: process.env.OWNER_EMAILS,
     OWNER_IDS: process.env.OWNER_IDS,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
     SMTP2GO_API_KEY: process.env.SMTP2GO_API_KEY,
   } satisfies Record<string, string | undefined>;
 };
@@ -278,7 +279,7 @@ export function integrationStatus() {
   return {
     gemini: !!c.GEMINI_API_KEY,
     maps: !!c.GOOGLE_MAPS_API_KEY,
-    email: !!(c.SMTP2GO_API_KEY && c.EMAIL_FROM),
+    email: !!((c.RESEND_API_KEY || c.SMTP2GO_API_KEY) && c.EMAIL_FROM),
     owner: !!(c.OWNER_EMAILS || c.OWNER_IDS),
   };
 }

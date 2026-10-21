@@ -1,5 +1,5 @@
 import { crmCustomers } from "@/lib/crm";
-import { EmailDeliveryUncertain, sendEmail } from "@/lib/email";
+import { EmailDeliveryUncertain, emailProvider, sendEmail } from "@/lib/email";
 import { config, database, errorResponse, loadState } from "@/lib/server";
 
 const londonClock = (date = new Date()) => {
@@ -36,8 +36,9 @@ export async function runDigest(req: Request, now = new Date()) {
     const clock = londonClock(now);
     if (clock.hour < 8)
       return Response.json({ status: "before-window", date: clock.date });
-    if (!c.SMTP2GO_API_KEY || !c.EMAIL_FROM)
-      return errorResponse(Error("SMTP2GO email setup required"), 503);
+    const provider = emailProvider(c);
+    if (!provider || !c.EMAIL_FROM)
+      return errorResponse(Error("Email setup required"), 503);
     const recipients = String(c.OWNER_EMAILS || "")
       .split(",")
       .map((value) => value.trim().toLowerCase())
@@ -101,7 +102,7 @@ export async function runDigest(req: Request, now = new Date()) {
       }
       try {
         const sent = await sendEmail({
-          apiKey: c.SMTP2GO_API_KEY,
+          provider,
           sender: c.EMAIL_FROM,
           to: [recipient],
           subject: `Em2 Catering Platform CRM: ${attention.length} relationship${attention.length === 1 ? "" : "s"} need attention`,

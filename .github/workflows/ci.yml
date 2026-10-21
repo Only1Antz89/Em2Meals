@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  postgres:
+    # The unit tests use SQLite; this job runs the real API against Postgres.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: em2
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: em2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Apply Postgres migrations
+        run: |
+          for file in drizzle-postgres/*.sql; do
+            sed 's/--> statement-breakpoint/;/g' "$file" | psql -v ON_ERROR_STOP=1 -q
+          done
+      - run: npm run build
+      - name: Start the app on Postgres
+        env:
+          AUTH_MODE: demo
+          NODE_OPTIONS: --import ./tests/postgres-preload.mjs
+        run: |
+          npx next start -p 5173 > next.log 2>&1 &
+          npx --yes wait-on@8.0.3 --timeout 60000 http://localhost:5173/
+      - name: API smoke test and order walkthrough
+        env:
+          EM2_DEMO_AUTH: "1"
+        run: |
+          node tests/api-smoke.mjs
+          node tests/walkthrough.mjs
+      - name: Server log
+        if: always()
+        run: cat next.log || true

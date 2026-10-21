@@ -251,6 +251,7 @@ export function tax(
 }
 export function normaliseState(s: State): State {
   s.journeys ||= [];
+  s.menus ||= [];
   s.engagements ||= [];
   s.followUps ||= [];
   for (const c of s.customers) c.industry ||= "Unclassified";

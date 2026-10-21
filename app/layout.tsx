@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { authMode } from "@/lib/auth-mode";
+import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "https://em2-meals.vercel.app",
-  ),
+  metadataBase: new URL(siteUrl),
   title: "Fork Goodness Baked | Private dining & corporate catering",
   description:
     "Artisanal goodness for meaningful occasions and productive days, through private dining and thoughtful corporate catering.",

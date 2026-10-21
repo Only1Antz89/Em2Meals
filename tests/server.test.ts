@@ -253,6 +253,44 @@ test("email sending fails closed when SMTP2GO is not configured or returns HTTP 
     env.SMTP2GO_API_KEY = originalKey;
   }
 });
+test("Resend is used when its key is set and failures are not recorded as sent", async () => {
+  resetDB();
+  draftState();
+  env.RESEND_API_KEY = "fake-resend-key";
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    calls.push({ url: String(input), init });
+    return Response.json({ statusCode: 422, name: "validation_error", message: "Invalid from" }, { status: 422 });
+  };
+  try {
+    const failed = await send(req({ draftId: "draft", confirm: true }));
+    assert.equal(failed.status, 400);
+    assert.match(((await failed.json()) as { error: string }).error, /Resend rejected the email \(422\): Invalid from/);
+    assert.equal(sqlite.prepare("SELECT status FROM email_deliveries WHERE id='draft'").get()?.status, "failed");
+    assert.equal(calls[0].url, "https://api.resend.com/emails");
+    const headers = calls[0].init?.headers as Record<string, string>;
+    assert.equal(headers.Authorization, "Bearer fake-resend-key");
+    const body = JSON.parse(String(calls[0].init?.body));
+    assert.equal(body.from, "test@example.com");
+    assert.deepEqual(body.to, ["supplier@example.com"]);
+    assert.equal(typeof body.text, "string");
+
+    resetDB();
+    draftState();
+    globalThis.fetch = async (input) => {
+      calls.push({ url: String(input) });
+      return Response.json({ id: "resend-email-1" });
+    };
+    const sent = await send(req({ draftId: "draft", confirm: true }));
+    assert.equal(sent.status, 200);
+    assert.equal(((await sent.json()) as { id: string }).id, "resend-email-1");
+    assert.equal((await loadState()).state.drafts[0].deliveryStatus, "sent");
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete env.RESEND_API_KEY;
+  }
+});
 test("CRM digest sends once per London day for relationships needing attention", async () => {
   resetDB();
   const state = emptyState();
@@ -787,4 +825,34 @@ test("concurrent invoice issue cannot reuse numbering or overwrite another issue
   );
   assert.equal(issued.length, 2);
   assert.equal(new Set(issued.map((i) => i.number)).size, 2);
+});
+
+test("new enquiry owner notification carries triage details only", async () => {
+  const { notifyOwnerOfEnquiry } = await import("../lib/enquiry-notification");
+  const originalFetch = globalThis.fetch;
+  const sent: { to: string[]; subject: string; text_body: string; html_body: string }[] = [];
+  globalThis.fetch = async (_url, init) => {
+    sent.push(JSON.parse(String(init?.body)));
+    return Response.json({ data: { succeeded: 1, failed: 0, email_id: "n1" } });
+  };
+  try {
+    const result = await notifyOwnerOfEnquiry({
+      reference: "ENQ-TEST",
+      details: {
+        ...details,
+        name: "<b>Sam</b>",
+        dietary: "Severe peanut allergy",
+        requirements: [{ reference: "Guest A", requirements: "Coeliac", meal: "", reviewed: false }],
+      },
+      origin: "https://example.test",
+    });
+    assert.equal(result.status, "sent");
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].to, ["owner@example.com"]);
+    assert.match(sent[0].text_body, /https:\/\/example.test\/admin\/orders\?mode=live/);
+    assert.ok(!/peanut|Coeliac|Guest A/i.test(JSON.stringify(sent[0])));
+    assert.ok(sent[0].html_body.includes("&lt;b&gt;Sam&lt;/b&gt;"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

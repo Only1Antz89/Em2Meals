@@ -1025,3 +1025,229 @@ test("inclusive invoice preserves accepted totals and issued records cannot edit
 });
 
 import "./reporting.test";
+
+import { liveMenu, publicMenu, generateMenu, type Menu } from "../lib/menu";
+import { assertStateIntegrity } from "../lib/state-integrity";
+import { normaliseState as normaliseMenus } from "../lib/operations";
+const dishNames = (menu: Menu) => menu.sections.flatMap((x) => x.items.map((i) => i.name));
+const menuYear = Number(today().slice(0, 4));
+test("menu generation uses only active recipes in the chosen season and year", () => {
+  let s: State = sampleState();
+  s.menus = [];
+  s = act(s, "recipe", { ...s.recipes[0], id: undefined, name: "Draft special", status: "draft" });
+  s = act(s, "recipe", {
+    ...s.recipes[0],
+    id: undefined,
+    name: "Winter stew",
+    status: "active",
+    collections: [{ year: menuYear, season: "Winter" }],
+  });
+  s = act(s, "menu-generate", { year: menuYear, season: "Summer" });
+  const menu = s.menus[0];
+  const names = dishNames(menu);
+  assert.ok(names.includes("House beef burger"));
+  assert.ok(!names.includes("Draft special"));
+  assert.ok(!names.includes("Winter stew"));
+  assert.deepEqual(
+    menu.sections.map((x) => x.title),
+    ["Starters & sides", "Mains", "Desserts"].filter((t) =>
+      menu.sections.some((x) => x.title === t),
+    ),
+  );
+  assert.throws(() => act(s, "menu-generate", { year: menuYear, season: "Summer" }), /already exists/);
+  assert.throws(() => act(s, "menu-generate", { year: menuYear, season: "Spring" }), /No active recipes/);
+  assertStateIntegrity(s);
+});
+test("published menus are frozen public projections without costs or recipe ids", () => {
+  let s: State = sampleState();
+  const published = liveMenu(s)!;
+  assert.ok(published, "sample workspace publishes a Summer menu");
+  const html = JSON.stringify(published);
+  assert.ok(!/recipeId|packCost|cost/i.test(html));
+  assert.ok(published.showPrices);
+  const menu = s.menus[0];
+  const unused = s.recipes.find(
+    (r) => !s.orders.some((o) => o.items.some((i) => i.recipeId === r.id)),
+  );
+  s = act(s, "recipe", { ...unused, name: "Renamed dish" });
+  assert.ok(!JSON.stringify(liveMenu(s)).includes("Renamed dish"));
+  s = act(s, "menu-save", { ...s.menus[0], title: "Draft title" });
+  assert.equal(liveMenu(s)!.title, published.title, "edits do not change the live menu");
+  s = act(s, "menu-publish", { id: menu.id });
+  assert.equal(liveMenu(s)!.title, "Draft title");
+  const hidden = publicMenu({ ...s.menus[0], showPrices: false });
+  assert.ok(hidden.sections.every((x) => x.items.every((i) => i.price === null)));
+  s = act(s, "menu-unpublish", { id: menu.id });
+  assert.equal(liveMenu(s), null);
+});
+test("only one menu is live and sync keeps owner edits", () => {
+  let s: State = sampleState();
+  const summer = s.menus[0];
+  s = act(s, "recipe", {
+    ...s.recipes[0],
+    id: undefined,
+    name: "Autumn soup",
+    collections: [{ year: menuYear, season: "Autumn" }],
+  });
+  s = act(s, "menu-generate", { year: menuYear, season: "Autumn" });
+  const autumn = s.menus.find((m) => m.season === "Autumn")!;
+  s = act(s, "menu-publish", { id: autumn.id });
+  assert.equal(s.menus.filter((m) => m.published).length, 1);
+  assert.equal(liveMenu(s)!.season, "Autumn");
+  const edited = structuredClone(s.menus.find((m) => m.id === summer.id)!);
+  edited.sections[0].items[0].name = "Owner's name";
+  s = act(s, "menu-save", edited);
+  s = act(s, "recipe", {
+    ...s.recipes[0],
+    id: undefined,
+    name: "Summer tart",
+    collections: [{ year: menuYear, season: "Summer" }],
+  });
+  s = act(s, "menu-sync", { id: summer.id });
+  const synced = s.menus.find((m) => m.id === summer.id)!;
+  const names = dishNames(synced);
+  assert.ok(names.includes("Owner's name"));
+  assert.ok(names.includes("Summer tart"));
+  assert.throws(() => act(s, "menu-save", { ...edited, theme: { ...edited.theme, heroImageUrl: "javascript:alert(1)" } }), /Images must be uploaded/);
+});
+test("older workspaces without menus normalise and generation is pure", () => {
+  const s = emptyState() as Partial<State>;
+  delete s.menus;
+  normaliseMenus(s as State);
+  assert.deepEqual(s.menus, []);
+  assert.equal(generateMenu(sampleState(), menuYear, "Summer").sections.length > 0, true);
+});
+
+import { validateMenuContent, syncMenu, menuLimits, itemFromRecipe } from "../lib/menu";
+test("menu validation names the section and dish that needs fixing", () => {
+  const menu = structuredClone(sampleState().menus[0]);
+  const section = menu.sections[0];
+  section.items[1].name = "   ";
+  section.items[0].price = -100;
+  menu.sections[1].title = "";
+  menu.title = "";
+  const result = validateMenuContent(menu);
+  assert.equal(result.ok, false);
+  const issues = result.ok ? [] : result.issues;
+  assert.ok(issues.includes(`“${section.title}”, dish 2: Every dish needs a name`), issues.join("|"));
+  assert.ok(issues.includes(`“${section.title}”, “${section.items[0].name}”: Prices cannot be negative`), issues.join("|"));
+  assert.ok(issues.includes("Section 2: Every section needs a title"), issues.join("|"));
+  assert.ok(issues.includes("Menu title: Add a menu title"), issues.join("|"));
+  assert.ok(issues.every((x) => !/sections \d|items \d/.test(x)), "no raw schema paths");
+  let s = sampleState();
+  assert.throws(
+    () => act(s, "menu-save", { ...menu, id: s.menus[0].id }),
+    (e: Error) => e.message.includes("Every dish needs a name") && !e.message.includes("sections 0"),
+  );
+  // Duplicate tags are folded, oversized prices refused.
+  const tagged = structuredClone(s.menus[0]);
+  tagged.sections[0].items[0].tags = ["V", "V", "GF"];
+  s = act(s, "menu-save", tagged);
+  assert.deepEqual(s.menus[0].sections[0].items[0].tags, ["V", "GF"]);
+  tagged.sections[0].items[0].price = menuLimits.maxPrice + 1;
+  assert.throws(() => act(s, "menu-save", tagged), /£10,000 or less/);
+});
+test("menu saves from an out-of-date editor are refused instead of overwriting", () => {
+  let s = sampleState();
+  const base = structuredClone(s.menus[0]);
+  s = act(s, "menu-save", { ...base, title: "First tab", baseUpdatedAt: base.updatedAt }, "first");
+  // A second editor still holding the original copy.
+  assert.throws(
+    () => act(s, "menu-save", { ...base, title: "Second tab", baseUpdatedAt: base.updatedAt }),
+    /changed in another window/,
+  );
+  assert.equal(s.menus[0].title, "First tab");
+  // Saving again from the latest copy works.
+  s = act(s, "menu-save", { ...s.menus[0], title: "Second tab", baseUpdatedAt: s.menus[0].updatedAt });
+  assert.equal(s.menus[0].title, "Second tab");
+});
+test("generated and synced dishes always fit the menu rules", () => {
+  let s = sampleState();
+  const recipe = {
+    ...s.recipes[0],
+    name: "x".repeat(500),
+    variant: undefined as unknown as string,
+    imageUrl: "http://insecure.example/photo.jpg",
+  };
+  const item = itemFromRecipe(recipe);
+  assert.equal(item.name.length, menuLimits.shortText);
+  assert.equal(item.description, "");
+  assert.equal(item.imageUrl, "");
+  assert.equal(item.showImage, false);
+  // A section already at its limit is not overfilled by sync.
+  const menu = structuredClone(s.menus[0]);
+  const target = menu.sections[0];
+  while (target.items.length < menuLimits.dishesPerSection)
+    target.items.push({ ...target.items[0], id: crypto.randomUUID(), recipeId: undefined });
+  s = act(s, "recipe", {
+    ...s.recipes.find((r) => menu.sections[0].items.some((i) => i.recipeId === r.id))!,
+    id: undefined,
+    name: "One too many",
+    collections: [{ year: menu.year, season: menu.season }],
+  });
+  const added = syncMenu(s, menu);
+  assert.ok(validateMenuContent(menu).ok, "menu stays valid after sync");
+  assert.ok(target.items.length <= menuLimits.dishesPerSection);
+  assert.ok(added <= 1);
+});
+test("publishing checks the whole menu and sync explains when nothing is added", () => {
+  let s = sampleState();
+  const id = s.menus[0].id;
+  s.menus[0].sections[0].items[0].name = "";
+  assert.throws(() => act(s, "menu-publish", { id }), /Fix these before publishing:[\s\S]*Every dish needs a name/);
+  s = sampleState();
+  assert.throws(() => act(s, "menu-sync", { id: s.menus[0].id }), /no new Summer/);
+  assert.throws(() => act(s, "menu-publish", { id: "missing" }), /Menu not found/);
+});
+
+import { erasedName, erasedEmail } from "../lib/privacy";
+test("customer erasure anonymises personal data but keeps issued invoices and blocks active orders", () => {
+  let s: State = sampleState();
+  const northbank = s.customers.find((c) => c.company.startsWith("Northbank"))!;
+  assert.throws(() => act(s, "customer-erase", { customerId: northbank.id }), /Complete or cancel/);
+  const enquiry = s.orders.find((o) => o.status === "enquiry")!;
+  const customerId = enquiry.customerId;
+  s = act(s, "crm-follow-up", { customerId, note: "Call back", dueDate: today(), status: "open" });
+  s = act(s, "customer-erase", { customerId });
+  const customer = s.customers.find((c) => c.id === customerId)!;
+  assert.equal(customer.name, erasedName);
+  assert.equal(customer.email, erasedEmail(customerId));
+  assert.ok(customer.erasedAt);
+  const orders = s.orders.filter((o) => o.customerId === customerId);
+  assert.ok(orders.length > 0);
+  for (const order of orders) {
+    assert.equal(order.details.name, erasedName);
+    assert.equal(order.details.phone, "");
+    assert.equal(order.details.dietary, "");
+    assert.deepEqual(order.details.requirements, []);
+    assert.ok(["delivered", "cancelled", "declined"].includes(order.status));
+  }
+  assert.equal(s.followUps.filter((f) => f.customerId === customerId).length, 0);
+  assert.equal(s.engagements.filter((f) => f.customerId === customerId).length, 0);
+  assertStateIntegrity(s);
+});
+test("only unworked enquiries can be deleted, removing an otherwise empty customer", () => {
+  let s: State = sampleState();
+  s = act(s, "order", {
+    details: { ...s.orders[0].details, name: "Spam Bot", email: "spam@example.com", company: "", date: "" },
+    items: [],
+  });
+  const spam = s.orders.at(-1)!;
+  s = act(s, "order-delete", { orderId: spam.id });
+  assert.ok(!s.orders.some((o) => o.id === spam.id));
+  assert.ok(!s.customers.some((c) => c.email === "spam@example.com"));
+  const delivered = s.orders.find((o) => o.status === "delivered")!;
+  assert.throws(() => act(s, "order-delete", { orderId: delivered.id }), /can't be deleted/);
+  assertStateIntegrity(s);
+});
+test("owners can correct an order whose event date has passed without changing the date", () => {
+  let s: State = sampleState();
+  const order = s.orders.find((o) => o.status === "enquiry")!;
+  s.orders.find((o) => o.id === order.id)!.details.date = "2020-01-01";
+  s = act(s, "order", { orderId: order.id, details: { ...order.details, date: "2020-01-01", phone: "07000000000" }, items: order.items });
+  assert.equal(s.orders.find((o) => o.id === order.id)!.details.phone, "07000000000");
+  assert.throws(
+    () => act(s, "order", { orderId: order.id, details: { ...order.details, date: "2020-02-01" }, items: order.items }),
+    /must not be in the past/,
+  );
+});

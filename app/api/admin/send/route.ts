@@ -9,7 +9,11 @@ import {
   commitStateAndDelivery,
 } from "@/lib/server";
 import { draftCurrent } from "@/lib/operations";
-import { EmailDeliveryUncertain, sendEmail } from "@/lib/email";
+import {
+  EmailDeliveryUncertain,
+  emailProvider,
+  sendEmail,
+} from "@/lib/email";
 import { z } from "zod";
 export async function POST(req: Request) {
   let locked: string | undefined;
@@ -25,7 +29,8 @@ export async function POST(req: Request) {
       })
       .parse(await jsonBody(req));
     const c = config();
-    if (!c.SMTP2GO_API_KEY || !c.EMAIL_FROM)
+    const provider = emailProvider(c);
+    if (!provider || !c.EMAIL_FROM)
       throw Error("Email setup required. The draft remains saved.");
     if (mode !== "live") throw Error("Sending disabled in sample workspace");
     const { state, revision } = await loadState("live"),
@@ -73,7 +78,7 @@ export async function POST(req: Request) {
       throw Error("Email already claimed; reload its delivery status");
     try {
       const result = await sendEmail({
-        apiKey: c.SMTP2GO_API_KEY,
+        provider,
         sender: c.EMAIL_FROM,
         to: [draft.to],
         subject: draft.subject,

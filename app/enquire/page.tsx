@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import { Header, Footer } from "../public-shell";
 import EnquiryForm from "./enquiry-form";
+
+export const metadata: Metadata = {
+  title: "Make an Enquiry | Fork Goodness Baked",
+  description:
+    "Tell us about your private dinner, celebration or corporate event and we will plan the food with you.",
+};
+
 export default function Page() {
   return (
     <>

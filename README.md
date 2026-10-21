@@ -71,7 +71,17 @@ Emails are saved drafts with an explicit Send action and a durable delivery clai
 
 The CRM digest endpoint is `POST /api/cron/crm-followups`. It requires `Authorization: Bearer <CRON_SECRET>`, evaluates the live workspace in Europe/London, and sends only after 08:00 when follow-ups or relationships need attention. Delivery is recorded once per London date and owner recipient. The included GitHub Actions workflow calls the endpoint hourly; configure repository secrets `CRM_DIGEST_URL` (the deployed endpoint URL) and `CRM_CRON_SECRET` (the same value as the runtime `CRON_SECRET`). Definite provider failures may be retried on the next invocation, while network-uncertain attempts are held for manual verification to avoid duplicate mail.
 
+The owner **Menu** page generates a seasonal website menu from the active recipes in a chosen year and season collection, grouped into starters, mains and desserts. Owners edit titles, restricted Markdown text, sections, dishes, optional selling prices, dietary tags (ingredient allergen labels are shown only as prompts to verify), photos, layout, background and accent from brand-safe options. The preview renders the real public page components in a same-origin frame at desktop, mobile and A4 widths. Publishing freezes a public projection (no recipe ids or costs) into the workspace; the public `/menu` page reads only that snapshot, so later recipe edits change nothing until republished. One menu is live at a time, and only the live workspace appears on the website. PDFs use the browser print dialog with an A4 print stylesheet.
+
 Client recaps are built from a dedicated projection containing only that customer’s delivered orders within the selected period, popular dishes, measured waste and feedback. Internal costs and margins are excluded. CSV export neutralises formula prefixes. Printable reports include only the recap section.
+
+## Privacy, notifications and backups
+
+- **New enquiry alerts:** when SMTP2GO and `OWNER_EMAILS` are configured, each new website enquiry emails the owner a short summary (name, contact, occasion, date, guests and a dashboard link; never dietary details). It is sent after the visitor's response and failures are logged without affecting the enquiry. Customers are never emailed automatically.
+- **Erasure requests:** CRM → client → **Erase personal data** anonymises the customer, their enquiries (contact, venue, request and dietary text), draft invoices and email drafts, removes their activity and follow-ups, declines open enquiries and deletes the original website submissions. Accepted orders must be completed or cancelled first. Issued invoices are kept unchanged for accounting retention.
+- **Spam and test enquiries:** an enquiry with no quotes accepted, stock, invoices, purchases, waste, feedback or journeys can be deleted from its order page, along with its original submission and a customer record that has no other history.
+- **Backups:** Settings → **Download backup** exports the whole workspace (and, for live, the original enquiries) as JSON. It contains personal data; store it securely.
+- **Headers and indexing:** all pages send `nosniff`, a strict referrer policy, a restrictive permissions policy and same-origin framing only. Admin, API and preview routes are `noindex`; `robots.txt` and `sitemap.xml` are generated from `NEXT_PUBLIC_SITE_URL`.
 
 ## Launch readiness
 

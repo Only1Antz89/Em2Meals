@@ -165,7 +165,17 @@ export function VenueSearch({
   }
   return (
     <div className="venue-search wide">
-      <div className="inline-actions">
+      <div
+        className="inline-actions"
+        onKeyDown={(e) => {
+          // The search sits inside enquiry/order forms; Enter should search
+          // rather than submit the surrounding form.
+          if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement))
+            return;
+          e.preventDefault();
+          if (!busy && query.trim().length >= 3) void search();
+        }}
+      >
         <Field
           label="Search for a public venue"
           value={query}

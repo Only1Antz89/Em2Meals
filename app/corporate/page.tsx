@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight, CalendarDays, ClipboardCheck, UsersRound } from "lucide-react";
 import { Footer, Header } from "../public-shell";
+
+export const metadata: Metadata = {
+  title: "Corporate Catering | Fork Goodness Baked",
+  description:
+    "Breakfasts, working lunches, meetings and events catered around the working day in London and the South East.",
+};
+
 
 const services = [
   [

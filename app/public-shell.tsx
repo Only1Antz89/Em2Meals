@@ -26,7 +26,6 @@ export function Brand({
     <Link
       href={admin ? "/admin" : "/"}
       className={`brand${inverse ? " brand--inverse" : ""}${admin ? " brand--admin" : ""}`}
-      aria-label={admin ? "Em2 Catering Platform dashboard" : "Fork Goodness Baked home"}
     >
       {!admin && <BrandMark className="brand__mark" />}
       <span className="brand__wordmark">
@@ -35,9 +34,11 @@ export function Brand({
         >
           {admin ? "Em2" : "Fork Goodness"}
         </strong>
+        {" "}
         <small style={admin ? undefined : { letterSpacing: "0.5em" }}>
           {admin ? "Catering Platform" : "Baked"}
         </small>
+        <span className="sr-only">{admin ? " dashboard" : " home"}</span>
       </span>
     </Link>
   );
@@ -48,7 +49,7 @@ export function Header({
   active,
 }: {
   variant?: "light" | "overlay";
-  active?: "private" | "corporate" | "about";
+  active?: "private" | "corporate" | "about" | "menu";
 }) {
   return (
     <header className={`site-header site-header--${variant}`}>
@@ -65,6 +66,12 @@ export function Header({
           aria-current={active === "corporate" ? "page" : undefined}
         >
           Corporate catering
+        </Link>
+        <Link
+          href="/menu"
+          aria-current={active === "menu" ? "page" : undefined}
+        >
+          Menu
         </Link>
         <Link
           href="/about"
@@ -92,6 +99,7 @@ export function Footer() {
         <nav aria-label="Footer pages">
           <span>Explore</span>
           <Link href="/">Home</Link>
+          <Link href="/menu">Seasonal menu</Link>
           <Link href="/about">About us</Link>
           <Link href="/enquire">Make an enquiry</Link>
         </nav>

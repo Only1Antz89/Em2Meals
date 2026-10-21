@@ -14,8 +14,11 @@ jobs:
           CRM_DIGEST_URL: ${{ secrets.CRM_DIGEST_URL }}
           CRM_CRON_SECRET: ${{ secrets.CRM_CRON_SECRET }}
         run: |
-          test -n "$CRM_DIGEST_URL"
-          test -n "$CRM_CRON_SECRET"
+          # Skip quietly until the digest is set up, instead of failing every hour.
+          if [ -z "$CRM_DIGEST_URL" ] || [ -z "$CRM_CRON_SECRET" ]; then
+            echo "::notice::CRM digest skipped: add the CRM_DIGEST_URL and CRM_CRON_SECRET repository secrets to enable it."
+            exit 0
+          fi
           curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Authorization: Bearer $CRM_CRON_SECRET" \

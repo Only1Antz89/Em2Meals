@@ -4,6 +4,7 @@ import {
   type Order,
   needs,
   available,
+  eligibleBatch,
   today,
   uid,
   money,
@@ -251,6 +252,7 @@ export function tax(
 }
 export function normaliseState(s: State): State {
   s.journeys ||= [];
+  s.recalls ||= [];
   s.menus ||= [];
   s.engagements ||= [];
   s.followUps ||= [];
@@ -416,13 +418,7 @@ export function reconcileStock(s: State) {
       kept: Order["reservations"] = [];
     for (const r of o.reservations) {
       const b = s.batches.find((b) => b.id === r.batchId);
-      if (
-        !b ||
-        !b.expiry ||
-        b.expiry < today() ||
-        b.expiry < (o.details.date || today())
-      )
-        continue;
+      if (!b || !eligibleBatch(b, o.details.date)) continue;
       const take = Math.min(
         r.quantity,
         demand[b.ingredientId] || 0,
@@ -440,13 +436,7 @@ export function reconcileStock(s: State) {
     for (const [id, qty] of Object.entries(needs(s, o))) {
       let deficit = qty - reservedFor(s, o, id);
       for (const b of s.batches
-        .filter(
-          (b) =>
-            b.ingredientId === id &&
-            b.expiry &&
-            b.expiry >= today() &&
-            b.expiry >= (o.details.date || today()),
-        )
+        .filter((b) => b.ingredientId === id && eligibleBatch(b, o.details.date))
         .sort(
           (a, b) =>
             a.expiry.localeCompare(b.expiry) || a.id.localeCompare(b.id),
@@ -474,11 +464,7 @@ export function shortage(s: State, o: Order) {
   return Object.entries(needs(s, o)).map(([ingredientId, quantity]) => {
     const eligible = s.batches
       .filter(
-        (b) =>
-          b.ingredientId === ingredientId &&
-          b.expiry &&
-          b.expiry >= today() &&
-          b.expiry >= (o.details.date || today()),
+        (b) => b.ingredientId === ingredientId && eligibleBatch(b, o.details.date),
       )
       .reduce((n, b) => n + Math.max(0, available(s, b.id, o.id)), 0);
     return {

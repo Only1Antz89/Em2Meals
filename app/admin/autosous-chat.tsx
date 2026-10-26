@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Plus, RefreshCw, X } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, Plus, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AutoSousLink, AutoSousProposal, AutoSousReply } from "@/lib/autosous";
 import { AutoSousIcon } from "./autosous-icon";
@@ -16,6 +16,7 @@ type Turn = {
   text: string;
   proposals?: AutoSousProposal[];
   links?: AutoSousLink[];
+  sources?: { title: string; url: string }[];
 };
 
 const STARTERS = [
@@ -77,6 +78,19 @@ export function AutoSousChat() {
       localStorage.setItem(`${storageKey(mode)}:status`, JSON.stringify(status));
     } catch {}
   }, [turns, status, mode, restored]);
+  // The avatar's "Ask AutoSous" links open this page with ?ask=…
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!restored || asked.current || !integrations.gemini) return;
+    const url = new URL(window.location.href);
+    const question = url.searchParams.get("ask");
+    if (!question) return;
+    asked.current = true;
+    url.searchParams.delete("ask");
+    window.history.replaceState(null, "", url.toString());
+    void ask(question.slice(0, 2000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored, integrations.gemini]);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns.length, thinking]);
@@ -112,6 +126,7 @@ export function AutoSousChat() {
           text: reply.text,
           proposals: reply.proposals,
           links: reply.links,
+          sources: reply.sources,
         },
       ]);
     } catch (e) {
@@ -236,6 +251,15 @@ export function AutoSousChat() {
                       </div>
                     );
                   })}
+                  {turn.sources?.length ? (
+                    <div className="autosous-links autosous-sources">
+                      {turn.sources.map((source) => (
+                        <a key={source.url} href={source.url} target="_blank" rel="noreferrer">
+                          {source.title} <ExternalLink size={11} />
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
                   {turn.links?.length ? (
                     <div className="autosous-links">
                       {turn.links.map((item) => (

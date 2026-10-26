@@ -77,7 +77,7 @@ export function StockSummary() {
             unit(s.orders.reduce((n, o) => n + reservedFor(s, o, i.id), 0)),
             unit(
               batches
-                .filter((b) => b.expiry && b.expiry >= today())
+                .filter((b) => !b.quarantined && b.expiry && b.expiry >= today())
                 .reduce((n, b) => n + Math.max(0, available(s, b.id)), 0),
             ),
             unit(

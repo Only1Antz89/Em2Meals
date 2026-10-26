@@ -63,6 +63,7 @@ import {
 } from "./venue-research-display";
 import { AutoSousIcon } from "./autosous-icon";
 import { AutoSousChat } from "./autosous-chat";
+import { AutoSousAvatar } from "./autosous-avatar";
 import { Brand } from "../public-shell";
 import {
   emptyState,
@@ -895,6 +896,7 @@ export default function Admin({
           </main>
         </SidebarInset>
         <AdminEditor edit={edit} onClose={() => setEdit(null)} run={run} />
+        {loaded ? <AutoSousAvatar /> : null}
       </SidebarProvider>
     </Context.Provider>
   );
@@ -1220,6 +1222,7 @@ export function stockEditor(
       },
       { key: "intake", label: "Intake date", type: "date" },
       { key: "expiry", label: "Supplier label expiry date", type: "date" },
+      { key: "lot", label: "Batch / lot code from the label" },
       {
         key: "dateType",
         label: "Date type",
@@ -1332,6 +1335,8 @@ function StorageExpiryRegister() {
     expirySort,
   });
   return (
+    <>
+    <RecallsPanel />
     <Panel title="Storage & expiry register">
       <InventoryFilterBar>
         <CategoryFilter value={category} />
@@ -1377,6 +1382,122 @@ function StorageExpiryRegister() {
         empty="No active stock matches these filters."
       />
       <StockHandlingNote />
+    </Panel>
+    </>
+  );
+}
+
+function RecallsPanel() {
+  const { s, open, run, busy } = useOps();
+  const [error, setError] = useState("");
+  const recalls = (s.recalls || []).toSorted((a, b) => b.at.localeCompare(a.at));
+  const report = () =>
+    open({
+      title: "Report a recall or contamination notice",
+      action: "stock-recall",
+      values: { source: "supplier", ingredientId: "", supplierId: "", reference: "" },
+      fields: [
+        { key: "lot", label: "Batch / lot code on the notice", required: true },
+        {
+          key: "ingredientId",
+          label: "Ingredient (optional)",
+          options: [
+            { value: "", label: "Any ingredient with this lot code" },
+            ...s.ingredients.map((i) => ({ value: i.id, label: i.name })),
+          ],
+        },
+        {
+          key: "supplierId",
+          label: "Supplier (optional)",
+          options: [
+            { value: "", label: "Any supplier" },
+            ...s.suppliers.map((x) => ({ value: x.id, label: x.name })),
+          ],
+        },
+        {
+          key: "source",
+          label: "Notice from",
+          options: [
+            { value: "supplier", label: "Supplier" },
+            { value: "food-safety-alert", label: "Food Standards Agency alert" },
+            { value: "owner", label: "Our own check" },
+          ],
+        },
+        { key: "reference", label: "Notice reference (optional)" },
+        { key: "reason", label: "What is wrong (e.g. bird flu, Listeria)", type: "textarea", required: true },
+      ],
+      transform: (v) => ({
+        ...v,
+        ingredientId: v.ingredientId || undefined,
+        supplierId: v.supplierId || undefined,
+      }),
+    });
+  const close = async (type: "recall-dispose" | "recall-release", recallId: string) => {
+    setError("");
+    try {
+      await run(type, { recallId, note: "" });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <Panel
+      title="Recalls & contamination"
+      action={<Add onClick={report}>Report a recall</Add>}
+    >
+      {error ? (
+        <p role="alert" className="error-message">
+          {error}
+        </p>
+      ) : null}
+      <GridTable
+        heads={["Reported", "Lot", "Reason", "Stock on hold", "Orders affected", "Status", ""]}
+        rows={recalls.map((r) => {
+          const held = s.batches.filter((b) => r.batchIds.includes(b.id) && b.quarantined?.recallId === r.id);
+          return [
+            new Date(r.at).toLocaleDateString("en-GB"),
+            <span key="lot">
+              <b>{r.lot}</b>
+              <small className="subtext">
+                {r.ingredientId ? s.ingredients.find((i) => i.id === r.ingredientId)?.name : "Any ingredient"}
+                {r.reference ? ` · ${r.reference}` : ""}
+              </small>
+            </span>,
+            r.reason,
+            held.length
+              ? held
+                  .map((b) => `${Math.round(b.quantity * 100) / 100} ${s.ingredients.find((i) => i.id === b.ingredientId)?.unit || ""} ${s.ingredients.find((i) => i.id === b.ingredientId)?.name || ""}`)
+                  .join(", ")
+              : r.batchIds.length
+                ? "None left on hold"
+                : "No matching stock",
+            r.orderIds.length
+              ? r.orderIds.map((id) => s.orders.find((o) => o.id === id)?.reference).filter(Boolean).join(", ")
+              : "None",
+            <Tag key="status" tone={r.status === "open" ? "red" : r.status === "disposed" ? "" : "green"}>
+              {r.status === "open" ? "On hold" : r.status === "disposed" ? "Disposed" : "Released"}
+            </Tag>,
+            r.status === "open" ? (
+              <span key="actions" className="recall-actions">
+                <Button size="sm" disabled={busy} onClick={() => void close("recall-dispose", r.id)}>
+                  Dispose of stock
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => void close("recall-release", r.id)}>
+                  Not affected
+                </Button>
+              </span>
+            ) : (
+              ""
+            ),
+          ];
+        })}
+        empty="No recalls recorded. When a supplier or the FSA reports a bad batch, enter its lot code here to put matching stock on hold."
+      />
+      <p className="panel-note">
+        Stock with a matching lot code is put on hold straight away, so it is no
+        longer used for orders. Orders that already used it are listed so you
+        can contact the customer. Disposing records the stock removal.
+      </p>
     </Panel>
   );
 }
@@ -1486,8 +1607,12 @@ function BatchName({
         <IngredientName id={batch.ingredientId} name={name} />
       </b>
       <small className="subtext">
-        {batch.id.slice(0, 8)} · received {batch.intake}
+        {batch.lot ? `Lot ${batch.lot}` : batch.id.slice(0, 8)} · received{" "}
+        {batch.intake}
       </small>
+      {batch.quarantined ? (
+        <Tag tone="red">On hold: recall</Tag>
+      ) : null}
     </span>
   );
 }
@@ -1524,6 +1649,7 @@ function UpdateBatchButton({ batch }: { batch: State["batches"][number] }) {
               label: "Verified expiry date",
               type: "date",
             },
+            { key: "lot", label: "Batch / lot code" },
             { key: "opened", label: "Opened date", type: "date" },
             { key: "frozen", label: "Frozen date", type: "date" },
             { key: "thawed", label: "Thawed date", type: "date" },

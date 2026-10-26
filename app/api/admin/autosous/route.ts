@@ -1,6 +1,7 @@
 import { owner, loadState, errorResponse } from "@/lib/server";
 import { workspaceAlerts, type AutoSousAlert } from "@/lib/autosous-alerts";
 import { alertMatches, foodSafetyFeed } from "@/lib/food-safety";
+import { kitchenBriefing } from "@/lib/autosous-briefing";
 
 // Everything the AutoSous avatar shows: workspace alerts plus food safety
 // alerts from the Food Standards Agency (warnings when they name an
@@ -43,9 +44,11 @@ export async function GET(req: Request) {
           },
         ];
       });
+    const all = [...alerts.filter((a) => a.severity === "urgent"), ...warnings, ...alerts.filter((a) => a.severity !== "urgent")];
     return Response.json(
       {
-        alerts: [...alerts.filter((a) => a.severity === "urgent"), ...warnings, ...alerts.filter((a) => a.severity !== "urgent")],
+        alerts: all,
+        briefing: kitchenBriefing(state, all),
         foodSafety: { news, checkedAt: feed.checkedAt, error: feed.error },
         generatedAt: new Date().toISOString(),
       },

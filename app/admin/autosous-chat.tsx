@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, ExternalLink, Plus, RefreshCw, X } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, MapPin, MessageCircle, Plus, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AutoSousLink, AutoSousProposal, AutoSousReply } from "@/lib/autosous";
 import { AutoSousIcon } from "./autosous-icon";
 import { AutoSousMarkdown, AutoSousRateLimitAlert } from "./assistant-display";
 import { useOps } from "./ops-context";
+import { AutoSousHat } from "./autosous-hat";
+import { VenueMode, VenueOffers, useAutoVenueResearch, type VenueTarget } from "./autosous-venues";
 
 type ProposalState = "pending" | "applying" | "applied" | "dismissed";
 type Turn = {
@@ -58,6 +60,14 @@ export function AutoSousChat() {
   const [error, setError] = useState("");
   const [restored, setRestored] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  // "ask" sends the box to the chat; "venue" researches a venue on the map.
+  const [compose, setCompose] = useState<"ask" | "venue">("ask");
+  const [venue, setVenue] = useState<VenueTarget | null>(null);
+  const working = useAutoVenueResearch();
+  const openVenue = (target: VenueTarget) => {
+    setVenue(target);
+    setCompose("venue");
+  };
   // Paths may carry a tab, e.g. "suppliers?tab=purchasing".
   const to = (path: string) => {
     const [page, query] = path.split("?");
@@ -83,6 +93,14 @@ export function AutoSousChat() {
   useEffect(() => {
     if (!restored || asked.current || !integrations.gemini) return;
     const url = new URL(window.location.href);
+    const venueId = url.searchParams.get("venue");
+    if (venueId) {
+      asked.current = true;
+      url.searchParams.delete("venue");
+      window.history.replaceState(null, "", url.toString());
+      openVenue({ kind: "order", id: venueId });
+      return;
+    }
     const question = url.searchParams.get("ask");
     if (!question) return;
     asked.current = true;
@@ -154,11 +172,30 @@ export function AutoSousChat() {
     void ask(lastUser.text, turns.slice(0, turns.lastIndexOf(lastUser)));
   };
 
+  const submit = () => {
+    if (compose === "venue") {
+      const query = draft.trim();
+      if (query.length < 3) return;
+      setDraft("");
+      openVenue({ kind: "query", query });
+    } else void ask(draft);
+  };
+
   return (
-    <div className="autosous-chat">
-      {!turns.length ? (
+    <div className={`autosous-chat ${venue ? "is-venue" : ""}`}>
+      {venue ? (
+        <VenueMode
+          target={venue}
+          onTarget={setVenue}
+          working={working}
+          onClose={() => {
+            setVenue(null);
+            setCompose("ask");
+          }}
+        />
+      ) : !turns.length ? (
         <div className="assistant-intro">
-          <AutoSousIcon size={36} />
+          <AutoSousHat size={132} busy={thinking} className="assistant-intro-hat" />
           <h2>What can I help with in the kitchen today?</h2>
           <p>
             Ask about enquiries, orders, recipes, menus, stock, suppliers,
@@ -179,6 +216,7 @@ export function AutoSousChat() {
               </Button>
             ))}
           </div>
+          <VenueOffers working={working} onPick={(id) => openVenue({ kind: "order", id })} />
         </div>
       ) : (
         <div className="autosous-thread" aria-live="polite">
@@ -275,9 +313,7 @@ export function AutoSousChat() {
           )}
           {thinking ? (
             <div className="autosous-turn is-model is-thinking">
-              <div className="autosous-turn-badge">
-                <AutoSousIcon size={16} />
-              </div>
+              <AutoSousHat size={40} busy className="autosous-turn-hat" />
               <p>
                 <RefreshCw size={14} className="animate-spin" /> Checking your
                 records…
@@ -294,11 +330,11 @@ export function AutoSousChat() {
         className="autosous-composer"
         onSubmit={(e) => {
           e.preventDefault();
-          void ask(draft);
+          submit();
         }}
       >
         <label className="sr-only" htmlFor="autosous-question">
-          Ask AutoSous
+          {compose === "venue" ? "Search a venue" : "Ask AutoSous"}
         </label>
         <textarea
           id="autosous-question"
@@ -306,21 +342,46 @@ export function AutoSousChat() {
           maxLength={2000}
           rows={2}
           placeholder={
-            integrations.gemini
-              ? "Ask AutoSous anything about your kitchen or business…"
-              : "AutoSous setup required: add GEMINI_API_KEY in the deployment settings."
+            !integrations.gemini
+              ? "AutoSous setup required: add GEMINI_API_KEY in the deployment settings."
+              : compose === "venue"
+                ? "Search a venue name, address or postcode…"
+                : "Ask AutoSous anything about your kitchen or business…"
           }
           disabled={!integrations.gemini}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              void ask(draft);
+              submit();
             }
           }}
         />
         <div className="autosous-composer-actions">
-          {turns.length ? (
+          <div className="autosous-compose-switch" role="radiogroup" aria-label="What the box does">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={compose === "ask"}
+              className={compose === "ask" ? "selected" : ""}
+              onClick={() => {
+                setCompose("ask");
+                setVenue(null);
+              }}
+            >
+              <MessageCircle size={13} /> Ask
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={compose === "venue"}
+              className={compose === "venue" ? "selected" : ""}
+              onClick={() => setCompose("venue")}
+            >
+              <MapPin size={13} /> Venue
+            </button>
+          </div>
+          {turns.length && compose === "ask" ? (
             <Button
               type="button"
               variant="ghost"
@@ -336,10 +397,17 @@ export function AutoSousChat() {
               <Plus size={14} /> New conversation
             </Button>
           ) : null}
-          <Button disabled={busy || thinking || !draft.trim() || !integrations.gemini}>
-            {thinking ? "Thinking…" : "Ask AutoSous"}
-            <ArrowRight size={16} />
-          </Button>
+          {compose === "venue" ? (
+            <Button disabled={draft.trim().length < 3 || !integrations.gemini}>
+              Find venue
+              <MapPin size={16} />
+            </Button>
+          ) : (
+            <Button disabled={busy || thinking || !draft.trim() || !integrations.gemini}>
+              {thinking ? "Thinking…" : "Ask AutoSous"}
+              <ArrowRight size={16} />
+            </Button>
+          )}
         </div>
       </form>
     </div>

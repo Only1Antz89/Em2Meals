@@ -56,11 +56,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IngredientName } from "./ingredient-name";
 import { Field, Pick, Notes } from "@/components/form-controls";
-import { AutoSousRateLimitAlert } from "./assistant-display";
-import {
-  VenueResearchDisplay,
-  type VenueResearchResult,
-} from "./venue-research-display";
 import { AutoSousIcon } from "./autosous-icon";
 import { AutoSousChat } from "./autosous-chat";
 import { AutoSousAvatar } from "./autosous-avatar";
@@ -2184,111 +2179,17 @@ function SettingsPage() {
   );
 }
 function Assistant() {
-  const { api, s, integrations, busy } = useOps();
-  const [venue, setVenue] = useState(""),
-    [venueResult, setVenueResult] = useState<VenueResearchResult | null>(null),
-    [venueError, setVenueError] = useState(""),
-    [venueBusy, setVenueBusy] = useState(false),
-    [lastVenueOrder, setLastVenueOrder] = useState<Order | null>(null);
-
-  const runVenueResearch = async (venueOrderId: string) => {
-    if (!venueOrderId) return;
-    setVenueError("");
-    setVenueBusy(true);
-    const selectedOrder = s.orders.find((o) => o.id === venueOrderId);
-    setLastVenueOrder(selectedOrder || null);
-    try {
-      const label = selectedOrder
-        ? `Venue Research: ${selectedOrder.details.venue} (${selectedOrder.reference})`
-        : "Research venue";
-      const res = await api<VenueResearchResult>("assistant", {
-        question: label,
-        venueOrderId,
-      });
-      setVenueResult(res);
-    } catch (e) {
-      setVenueError((e as Error).message);
-    } finally {
-      setVenueBusy(false);
-    }
-  };
-
+  const { integrations } = useOps();
   return (
-    <>
-      <Panel
-        title="Your kitchen, in the know"
-        action={
-          <Tag tone={integrations.gemini ? "green" : "amber"}>
-            {integrations.gemini
-              ? "AutoSous ready"
-              : "AutoSous setup required"}
-          </Tag>
-        }
-      >
-        <AutoSousChat />
-      </Panel>
-      <Panel title="Public venue research">
-        <div className="report-controls">
-          <Pick
-            label="Order venue"
-            value={venue}
-            onChange={setVenue}
-            options={s.orders.map((o) => ({
-              value: o.id,
-              label: `${o.reference} · ${o.details.venue}`,
-            }))}
-          />
-          <Button
-            disabled={!venue || busy || venueBusy}
-            onClick={() => runVenueResearch(venue)}
-          >
-            {venueBusy ? (
-              <>
-                <RefreshCw size={14} className="animate-spin" />
-                <span>Researching…</span>
-              </>
-            ) : (
-              <>
-                <span>Research venue</span>
-                <ArrowRight size={16} />
-              </>
-            )}
-          </Button>
-        </div>
-        <p className="panel-note">
-          Public sources may be incomplete or outdated. Confirm accessibility,
-          loading and permits directly with the venue.
-        </p>
-
-        {venueBusy && (
-          <div className="venue-research-loading">
-            <RefreshCw size={18} className="animate-spin text-amber-600 flex-shrink-0" />
-            <div className="venue-loading-text">
-              <strong>Conducting public venue reconnaissance…</strong>
-              <p>Scanning online records for entrance access, loading bays, and parking regulations.</p>
-            </div>
-          </div>
-        )}
-
-        {venueError && (
-          <AutoSousRateLimitAlert
-            error={venueError}
-            busy={venueBusy}
-            onRetry={() => runVenueResearch(venue)}
-          />
-        )}
-
-        {venueResult && !venueBusy && (
-          <div className="venue-research-container">
-            <VenueResearchDisplay
-              result={venueResult}
-              order={lastVenueOrder || s.orders.find((o) => o.id === venue)}
-              onRefresh={() => runVenueResearch(venue)}
-              busy={venueBusy}
-            />
-          </div>
-        )}
-      </Panel>
-    </>
+    <Panel
+      title="Your kitchen, in the know"
+      action={
+        <Tag tone={integrations.gemini ? "green" : "amber"}>
+          {integrations.gemini ? "AutoSous ready" : "AutoSous setup required"}
+        </Tag>
+      }
+    >
+      <AutoSousChat />
+    </Panel>
   );
 }

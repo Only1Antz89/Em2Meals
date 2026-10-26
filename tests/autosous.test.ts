@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { applyCommand, today, type State } from "../lib/domain";
 import { sampleState } from "../lib/sample";
 import { workspaceAlerts } from "../lib/autosous-alerts";
+import { kitchenBriefing } from "../lib/autosous-briefing";
 import { alertMatches, parseFeed } from "../lib/food-safety";
 
 const act = (s: State, type: string, payload: unknown) =>
@@ -141,4 +142,33 @@ test("food safety feeds parse RSS and Atom and match stocked ingredients by word
   s.ingredients.push({ ...s.ingredients[0], id: "egg", name: "Eggs" });
   assert.ok(alertMatches(s, items[0]).some((i) => /chicken/i.test(i.name)));
   assert.ok(!alertMatches(s, parseFeed(atom, "allergy")[0]).some((i) => i.id === "egg"));
+});
+
+test("the briefing groups services by day with the next job and their alerts", () => {
+  const s = sampleState();
+  const order = s.orders.find((o) => o.status === "ingredients needed")!;
+  order.details.date = addDays(1);
+  order.details.arrivalTime = "11:00";
+  const later = structuredClone(order);
+  later.id = "later";
+  later.reference = "EM-LATER";
+  later.details.date = addDays(4);
+  later.status = "confirmed";
+  later.reservations = [];
+  s.orders.push(later);
+  const [soon] = s.batches.filter((b) => b.quantity > 0 && !b.quarantined);
+  soon.expiry = addDays(1);
+  const alerts = workspaceAlerts(s);
+  const b = kitchenBriefing(s, alerts);
+  const tomorrow = b.days.find((d) => d.id === "tomorrow")!;
+  const svc = tomorrow.services.find((x) => x.id === order.id)!;
+  assert.ok(svc, "tomorrow's service is listed");
+  assert.equal(svc.time, "11:00");
+  assert.match(svc.nextStep, /Order|mark ingredients ready/);
+  assert.ok(svc.alerts.some((a) => a.id === `progress-${order.id}`), "the order's alert is shown on its service");
+  assert.ok(!b.onThePass.some((a) => a.id === `progress-${order.id}`), "and not repeated below");
+  assert.ok(b.days.find((d) => d.id === "week")!.services.some((x) => x.id === "later"));
+  assert.ok(b.prep && b.prep.dishes.length > 0);
+  assert.ok(b.useFirst.some((l) => l.id === `use-${soon.id}`));
+  assert.match(b.summary, /service/);
 });

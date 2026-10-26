@@ -8,6 +8,9 @@ import { POST as submit } from "../app/api/enquiries/route";
 import { POST as resolve } from "../app/api/admin/delivery/route";
 import { runDigest } from "../lib/crm-digest";
 import { gemini } from "../lib/integrations";
+import type { AutoSousReply } from "../lib/autosous";
+import { POST as assistant } from "../app/api/admin/assistant/route";
+import { POST as action } from "../app/api/admin/action/route";
 function req(body: unknown) {
   return new Request("http://localhost/api/test", {
     method: "POST",
@@ -854,5 +857,166 @@ test("new enquiry owner notification carries triage details only", async () => {
     assert.ok(sent[0].html_body.includes("&lt;b&gt;Sam&lt;/b&gt;"));
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("AutoSous answers from records through tools and only proposes changes", async () => {
+  resetDB();
+  env.GEMINI_API_KEY = "fake-gemini-key";
+  env.GEMINI_MODEL = "gemini-3.5-flash-lite";
+  await submit(
+    req({
+      details: { ...details, name: "Dana Lee", company: "Acme Ltd" },
+      requestKey: crypto.randomUUID(),
+      website: "",
+    }),
+  );
+  const before = await loadState();
+  const order = before.state.orders[0];
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    bodies.push(body);
+    if (bodies.length === 1)
+      return Response.json({
+        candidates: [
+          {
+            content: {
+              role: "model",
+              parts: [
+                {
+                  functionCall: { id: "c1", name: "find_orders", args: { query: "Acme" } },
+                  thoughtSignature: "sig-1",
+                },
+                {
+                  functionCall: {
+                    id: "c2",
+                    name: "propose_follow_up",
+                    args: { customer: "Acme", dueDate: "2099-01-05", note: "Check menu choices", order: order.reference },
+                  },
+                },
+                {
+                  functionCall: { id: "c3", name: "propose_order_status", args: { order: "EM-0000-404", status: "confirmed" } },
+                },
+              ],
+            },
+          },
+        ],
+      });
+    return Response.json({
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [{ text: `${order.reference} is a new enquiry. I proposed a follow-up.` }],
+          },
+        },
+      ],
+    });
+  };
+  try {
+    const response = await assistant(
+      req({ mode: "live", messages: [{ role: "user", text: "What is happening with Acme?" }] }),
+    );
+    assert.equal(response.status, 200);
+    const reply = (await response.json()) as AutoSousReply;
+    assert.match(reply.text, /proposed a follow-up/);
+    assert.equal(bodies.length, 2);
+    // Gemini 3 request shape: function tools, thinking level, no temperature.
+    const first = bodies[0] as {
+      tools: { functionDeclarations: { name: string }[] }[];
+      generationConfig: Record<string, unknown>;
+    };
+    assert.ok(first.tools[0].functionDeclarations.some((d) => d.name === "order_details"));
+    assert.deepEqual(first.generationConfig.thinkingConfig, { thinkingLevel: "medium" });
+    assert.equal("temperature" in first.generationConfig, false);
+    // The model turn goes back unchanged (thought signatures) with results.
+    const second = bodies[1] as { contents: { role: string; parts: Record<string, unknown>[] }[] };
+    assert.equal(second.contents[1].role, "model");
+    assert.equal(second.contents[1].parts[0].thoughtSignature, "sig-1");
+    const results = second.contents[2].parts.map(
+      (part) => (part.functionResponse as { id: string; response: { result: Record<string, unknown> } }),
+    );
+    assert.deepEqual(results.map((r) => r.id), ["c1", "c2", "c3"]);
+    assert.equal((results[0].response.result.orders as { reference: string }[])[0].reference, order.reference);
+    assert.match(String(results[2].response.result.error), /No order matches/);
+    // One valid proposal, nothing saved yet.
+    assert.equal(reply.proposals.length, 1);
+    assert.equal(reply.proposals[0].type, "crm-follow-up");
+    assert.equal(reply.proposals[0].payload.orderId, order.id);
+    assert.ok(reply.links.some((l) => l.path === `orders/${order.id}`));
+    const after = await loadState();
+    assert.equal(after.revision, before.revision);
+    assert.equal(after.state.followUps.length, 0);
+    // Applying the proposal is the ordinary action API.
+    const applied = await action(
+      req({
+        mode: "live",
+        revision: after.revision,
+        command: { id: crypto.randomUUID(), type: reply.proposals[0].type, payload: reply.proposals[0].payload },
+      }),
+    );
+    assert.equal(applied.status, 200);
+    assert.equal((await loadState()).state.followUps[0].note, "Check menu choices");
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete env.GEMINI_API_KEY;
+    delete env.GEMINI_MODEL;
+  }
+});
+
+test("AutoSous rejects proposals that would fail and reports setup errors", async () => {
+  resetDB();
+  await submit(
+    req({ details, requestKey: crypto.randomUUID(), website: "" }),
+  );
+  const missing = await assistant(
+    req({ mode: "live", messages: [{ role: "user", text: "Hello" }] }),
+  );
+  assert.equal(missing.status, 503);
+  assert.match(((await missing.json()) as { error: string }).error, /setup required/);
+  env.GEMINI_API_KEY = "fake-gemini-key";
+  const { state } = await loadState();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  let toolResult: Record<string, unknown> = {};
+  globalThis.fetch = async (_input, init) => {
+    calls++;
+    const body = JSON.parse(String(init?.body));
+    if (calls === 1)
+      return Response.json({
+        candidates: [
+          {
+            content: {
+              role: "model",
+              parts: [
+                {
+                  functionCall: {
+                    name: "propose_quote",
+                    args: { order: state.orders[0].reference, netPounds: 250 },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+    toolResult = body.contents.at(-1).parts[0].functionResponse.response.result;
+    return Response.json({
+      candidates: [{ content: { parts: [{ text: "Add meals before quoting." }] } }],
+    });
+  };
+  try {
+    const response = await assistant(
+      req({ mode: "live", messages: [{ role: "user", text: "Quote £250" }] }),
+    );
+    const reply = (await response.json()) as AutoSousReply;
+    assert.equal(response.status, 200);
+    assert.equal(reply.proposals.length, 0);
+    assert.match(String(toolResult.error), /would be rejected: Add meal quantities first/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete env.GEMINI_API_KEY;
   }
 });

@@ -201,62 +201,9 @@ function statusTone(status?: string): "amber" | "green" | "blue" | "neutral" {
   return "neutral";
 }
 
-export function AutoSousFormattedAnswer({
-  result,
-  question,
-}: {
-  result: AssistantResult;
-  question?: string;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    if (!result?.text) return;
-    try {
-      await navigator.clipboard.writeText(result.text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {}
-  };
-
-  const blocks = parseMarkdownToBlocks(result.text || "");
-
+export function AutoSousMarkdown({ text }: { text: string }) {
+  const blocks = parseMarkdownToBlocks(text);
   return (
-    <div className="autosous-response-card">
-      <div className="autosous-response-header">
-        <div className="autosous-brand">
-          <div className="autosous-icon-badge">
-            <AutoSousIcon size={20} />
-          </div>
-          <div>
-            <div className="autosous-title-row">
-              <span className="autosous-title">AutoSous Operational Intelligence</span>
-              <span className="autosous-badge-live">Live</span>
-            </div>
-            {question && <p className="autosous-query-echo">&ldquo;{question}&rdquo;</p>}
-          </div>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleCopy}
-          className="autosous-copy-btn"
-        >
-          {copied ? (
-            <>
-              <Check size={14} className="text-emerald-600" />
-              <span>Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy size={14} />
-              <span>Copy</span>
-            </>
-          )}
-        </Button>
-      </div>
-
       <div className="autosous-response-body">
         {blocks.map((block, idx) => {
           switch (block.type) {
@@ -371,6 +318,64 @@ export function AutoSousFormattedAnswer({
           }
         })}
       </div>
+  );
+}
+
+export function AutoSousFormattedAnswer({
+  result,
+  question,
+}: {
+  result: AssistantResult;
+  question?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!result?.text) return;
+    try {
+      await navigator.clipboard.writeText(result.text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  return (
+    <div className="autosous-response-card">
+      <div className="autosous-response-header">
+        <div className="autosous-brand">
+          <div className="autosous-icon-badge">
+            <AutoSousIcon size={20} />
+          </div>
+          <div>
+            <div className="autosous-title-row">
+              <span className="autosous-title">AutoSous Operational Intelligence</span>
+              <span className="autosous-badge-live">Live</span>
+            </div>
+            {question && <p className="autosous-query-echo">&ldquo;{question}&rdquo;</p>}
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleCopy}
+          className="autosous-copy-btn"
+        >
+          {copied ? (
+            <>
+              <Check size={14} className="text-emerald-600" />
+              <span>Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy size={14} />
+              <span>Copy</span>
+            </>
+          )}
+        </Button>
+      </div>
+
+      <AutoSousMarkdown text={result.text || ""} />
 
       {result.sources && result.sources.length > 0 && (
         <div className="autosous-sources-section">

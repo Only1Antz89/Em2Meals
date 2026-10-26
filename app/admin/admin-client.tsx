@@ -56,16 +56,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IngredientName } from "./ingredient-name";
 import { Field, Pick, Notes } from "@/components/form-controls";
-import {
-  AutoSousFormattedAnswer,
-  AutoSousRateLimitAlert,
-  type AssistantResult,
-} from "./assistant-display";
+import { AutoSousRateLimitAlert } from "./assistant-display";
 import {
   VenueResearchDisplay,
   type VenueResearchResult,
 } from "./venue-research-display";
 import { AutoSousIcon } from "./autosous-icon";
+import { AutoSousChat } from "./autosous-chat";
 import { Brand } from "../public-shell";
 import {
   emptyState,
@@ -2062,28 +2059,11 @@ function SettingsPage() {
 }
 function Assistant() {
   const { api, s, integrations, busy } = useOps();
-  const [question, setQuestion] = useState(""),
-    [lastQuestion, setLastQuestion] = useState(""),
-    [result, setResult] = useState<AssistantResult | null>(null),
-    [error, setError] = useState(""),
-    [venue, setVenue] = useState(""),
+  const [venue, setVenue] = useState(""),
     [venueResult, setVenueResult] = useState<VenueResearchResult | null>(null),
     [venueError, setVenueError] = useState(""),
     [venueBusy, setVenueBusy] = useState(false),
     [lastVenueOrder, setLastVenueOrder] = useState<Order | null>(null);
-
-  const runQuery = async (queryText: string) => {
-    const trimmed = queryText.trim();
-    if (!trimmed) return;
-    setError("");
-    try {
-      const res = await api<AssistantResult>("assistant", { question: trimmed });
-      setResult(res);
-      setLastQuestion(trimmed);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
 
   const runVenueResearch = async (venueOrderId: string) => {
     if (!venueOrderId) return;
@@ -2119,65 +2099,7 @@ function Assistant() {
           </Tag>
         }
       >
-        <div className="assistant-intro">
-          <AutoSousIcon size={36} />
-          <h2>What’s needed for the next occasion?</h2>
-          <p>
-            Ask about orders, ingredient requirements, stock shortages or saved
-            delivery estimates. Suggestions stay separate from your records.
-          </p>
-          <div className="suggestions">
-            {[
-              "Which orders need attention?",
-              "What ingredients are needed for upcoming orders?",
-              "What stock should I restock?",
-            ].map((q) => (
-              <Button
-                key={q}
-                variant="outline"
-                disabled={busy}
-                onClick={() => {
-                  setQuestion(q);
-                  runQuery(q);
-                }}
-              >
-                {q}
-              </Button>
-            ))}
-          </div>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              await runQuery(question);
-            }}
-          >
-            <Notes
-              label="Ask the kitchen assistant"
-              value={question}
-              onChange={setQuestion}
-            />
-            <Button
-              disabled={busy || !question.trim()}
-              className="mt-4"
-            >
-              {busy ? "Looking into it…" : "Ask AutoSous"}
-              <ArrowRight size={16} />
-            </Button>
-          </form>
-        </div>
-        {error && (
-          <AutoSousRateLimitAlert
-            error={error}
-            busy={busy}
-            onRetry={() => runQuery(question || lastQuestion)}
-          />
-        )}
-        {result && (
-          <AutoSousFormattedAnswer
-            result={result}
-            question={lastQuestion}
-          />
-        )}
+        <AutoSousChat />
       </Panel>
       <Panel title="Public venue research">
         <div className="report-controls">

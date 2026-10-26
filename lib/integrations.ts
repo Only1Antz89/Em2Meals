@@ -1,15 +1,19 @@
 import { config } from "./server";
 
-type GeminiPart = { text?: string };
-type GeminiResponse = {
-  candidates?: Array<{
-    content?: { parts?: GeminiPart[] };
-    finishReason?: string;
-    groundingMetadata?: {
-      groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
-    };
-  }>;
+export type GeminiPart = {
+  text?: string;
+  thought?: boolean;
+  thoughtSignature?: string;
+  functionCall?: { id?: string; name: string; args?: Record<string, unknown> };
 };
+export type GeminiCandidate = {
+  content?: { role?: string; parts?: GeminiPart[] };
+  finishReason?: string;
+  groundingMetadata?: {
+    groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
+  };
+};
+export type GeminiResponse = { candidates?: GeminiCandidate[] };
 
 export class GeminiIntegrationError extends Error {
   status: number;
@@ -65,57 +69,67 @@ export async function googleJSON<T = Record<string, unknown>>(
     );
   return r.json() as Promise<T>;
 }
-export async function gemini(
-  prompt: string,
-  system: string,
-  schema?: Record<string, unknown>,
-  grounded = false,
+export type GeminiTurn = { role: "user" | "model"; parts: Record<string, unknown>[] };
+
+const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+const FALLBACK_GEMINI_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.6-flash",
+];
+
+// Gemini 3.x replaces thinkingBudget with thinkingLevel and ignores
+// temperature, so neither is sent to those models. Flash-Lite defaults to
+// minimal thinking, which ends multi-step tool use early; tool loops ask for
+// medium. Older models keep their own defaults.
+export function generationConfigFor(
+  model: string,
+  options: { schema?: Record<string, unknown>; toolUse?: boolean } = {},
 ) {
+  const config: Record<string, unknown> = { maxOutputTokens: 8192 };
+  const version = Number(model.match(/^gemini-(\d+(?:\.\d+)?)/)?.[1] || 0);
+  if (version >= 3) {
+    const lite = model.includes("flash-lite");
+    config.thinkingConfig = {
+      thinkingLevel: lite && !options.toolUse ? "minimal" : "medium",
+    };
+  } else {
+    config.temperature = 0.2;
+  }
+  if (options.schema)
+    Object.assign(config, {
+      responseMimeType: "application/json",
+      responseSchema: options.schema,
+    });
+  return config;
+}
+
+function geminiModels() {
+  const configured = String(config().GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim();
+  if (!/^[a-zA-Z0-9.-]+$/.test(configured))
+    throw Error("Invalid AutoSous model configuration");
+  return Array.from(new Set([configured, ...FALLBACK_GEMINI_MODELS]));
+}
+
+// Sends one generateContent request, trying the configured model and then
+// the fallbacks when a model is missing, rejects the request shape or is busy.
+export async function geminiGenerate(
+  build: (model: string) => Record<string, unknown>,
+  options: { searchFallback?: boolean } = {},
+): Promise<{ response: GeminiResponse; model: string }> {
   const c = config();
   if (!c.GEMINI_API_KEY)
     throw Error(
       "AutoSous setup required. Your records are saved and can be reviewed manually.",
     );
-  const configuredModel = String(c.GEMINI_MODEL || "gemini-3.5-flash-lite");
-  if (!/^[a-zA-Z0-9.-]+$/.test(configuredModel))
-    throw Error("Invalid AutoSous model configuration");
-
-  const candidateModels = Array.from(
-    new Set([
-      configuredModel,
-      "gemini-3.5-flash-lite",
-      "gemini-3.1-flash-lite",
-      "gemini-3.6-flash",
-    ]),
-  );
-
+  const base = String(
+    c.GEMINI_API_BASE || "https://generativelanguage.googleapis.com/v1beta",
+  ).replace(/\/$/, "");
   let r: Response | undefined;
   let lastStatus = 503;
-
-  for (const model of candidateModels) {
-    const generationConfig: Record<string, unknown> = {
-      temperature: 0.2,
-      maxOutputTokens: 3000,
-    };
-    if (!model.includes("flash-lite")) {
-      generationConfig.thinkingConfig = { thinkingBudget: 0 };
-    }
-    if (schema) {
-      Object.assign(generationConfig, {
-        responseMimeType: "application/json",
-        responseSchema: schema,
-      });
-    }
-
-    const body: Record<string, unknown> = {
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig,
-    };
-    if (grounded) body.tools = [{ google_search: {} }];
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
+  for (const model of geminiModels()) {
+    const body = build(model);
+    const url = `${base}/models/${model}:generateContent`;
     for (let attempt = 0; attempt < 2; attempt++) {
       r = await fetch(url, {
         method: "POST",
@@ -126,31 +140,52 @@ export async function gemini(
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(35000),
       });
-
-      // If search grounding fails specifically due to quota or plan limits (429),
-      // retry immediately without search grounding on the same model.
-      if (r.status === 429 && body.tools) {
+      // Search grounding has its own quota: when only that is exhausted,
+      // answer from the model without search rather than failing.
+      if (r.status === 429 && options.searchFallback && body.tools) {
         delete body.tools;
         continue;
       }
-
       if (r.ok || !RETRYABLE_GEMINI_STATUSES.has(r.status)) break;
       await wait(retryDelay(r, attempt));
     }
-
-    if (r?.ok) break;
+    if (r?.ok)
+      return { response: (await r.json()) as GeminiResponse, model };
     lastStatus = r?.status || 503;
-    // If rate-limited or unavailable on this specific model, try the next candidate model
+    if (r && r.status !== 404 && r.status !== 400 && !RETRYABLE_GEMINI_STATUSES.has(r.status)) break;
   }
+  const status = r?.status || lastStatus;
+  let detail = "";
+  try {
+    const j = (await r?.json()) as { error?: { message?: string } } | undefined;
+    if (j?.error?.message) detail = ` ${j.error.message.slice(0, 200)}`;
+  } catch {}
+  if (detail) console.error(`AutoSous request failed (${status}):${detail}`);
+  throw new GeminiIntegrationError(status, geminiFailure(status));
+}
 
-  if (!r?.ok) {
-    const status = r?.status || lastStatus;
-    throw new GeminiIntegrationError(status, geminiFailure(status));
-  }
-  const j = (await r.json()) as GeminiResponse;
+export async function gemini(
+  prompt: string,
+  system: string,
+  schema?: Record<string, unknown>,
+  grounded = false,
+) {
+  const { response: j } = await geminiGenerate(
+    (model) => {
+      const body: Record<string, unknown> = {
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: generationConfigFor(model, { schema }),
+      };
+      if (grounded) body.tools = [{ google_search: {} }];
+      return body;
+    },
+    { searchFallback: grounded },
+  );
   const candidate = j.candidates?.[0];
   const text = candidate?.content?.parts
-    ?.map((part) => part.text || "")
+    ?.filter((part) => !part.thought)
+    .map((part) => part.text || "")
     .join("")
     .trim();
   if (!text) {
@@ -161,17 +196,18 @@ export async function gemini(
         : "AutoSous returned no usable answer. Review manually.",
     );
   }
+  return { text, sources: groundingSources(candidate) };
+}
+
+export function groundingSources(candidate: GeminiCandidate | undefined) {
   const sources = (candidate?.groundingMetadata?.groundingChunks || []).flatMap(
     (chunk) =>
       chunk.web?.uri && /^https:\/\//.test(chunk.web.uri)
         ? [{ title: chunk.web.title || "Source", url: chunk.web.uri }]
         : [],
   );
-  return {
-    text,
-    sources: sources.filter(
-      (source, index) =>
-        sources.findIndex((candidate) => candidate.url === source.url) === index,
-    ),
-  };
+  return sources.filter(
+    (source, index) =>
+      sources.findIndex((candidate) => candidate.url === source.url) === index,
+  );
 }

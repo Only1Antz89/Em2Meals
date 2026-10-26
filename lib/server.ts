@@ -26,6 +26,8 @@ export const config = () => {
     EMAIL_FROM: process.env.EMAIL_FROM,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GEMINI_MODEL: process.env.GEMINI_MODEL,
+    // Test hook: points AutoSous at a local stand-in for the Gemini API.
+    GEMINI_API_BASE: process.env.GEMINI_API_BASE,
     GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
     OWNER_EMAILS: process.env.OWNER_EMAILS,
     OWNER_IDS: process.env.OWNER_IDS,

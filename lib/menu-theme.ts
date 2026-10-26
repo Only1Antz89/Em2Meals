@@ -83,7 +83,7 @@ export type PublicMenu = {
 };
 
 // Image backgrounds always sit under a dark overlay of at least this strength.
-export const minimumImageOverlay = 0.25;
+export const minimumImageOverlay = 0.4;
 
 export function menuBackgroundColour(theme: MenuTheme) {
   const { kind, value } = theme.background;

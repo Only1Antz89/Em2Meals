@@ -42,6 +42,7 @@ import {
   menuLayouts,
   menuSeasons,
   menuTags,
+  minimumImageOverlay,
   type Season,
 } from "@/lib/menu-theme";
 import { useOps } from "./ops-context";
@@ -945,13 +946,13 @@ function DesignTab({ menu, update }: TabProps) {
               onChange={(value) => update((d) => { d.theme.background.value = value; })}
             />
             <label className="menu-range">
-              <span>Darken photo · {Math.round(Math.max(0.25, theme.background.overlay) * 100)}%</span>
+              <span>Darken photo · {Math.round(Math.max(minimumImageOverlay, theme.background.overlay) * 100)}%</span>
               <input
                 type="range"
-                min={0.25}
+                min={minimumImageOverlay}
                 max={0.9}
                 step={0.05}
-                value={Math.max(0.25, theme.background.overlay)}
+                value={Math.max(minimumImageOverlay, theme.background.overlay)}
                 onChange={(event) => update((d) => { d.theme.background.overlay = Number(event.target.value); })}
               />
             </label>

@@ -5834,6 +5834,14 @@ h2,
 .menu-doc__backdrop img {
   object-fit: cover;
 }
+/* Keep text legible over busy photos, whatever the overlay strength. */
+.menu-doc--photo {
+  text-shadow: 0 1px 3px rgba(10, 18, 22, 0.6);
+}
+.menu-doc--photo .menu-doc__hero-image,
+.menu-doc--photo .menu-doc__dish-image {
+  text-shadow: none;
+}
 .menu-doc__backdrop::after {
   content: "";
   position: absolute;
@@ -6013,6 +6021,13 @@ h2,
   letter-spacing: 0.06em;
   text-decoration: none;
 }
+.menu-doc__price-row {
+  display: flex;
+  flex: 1 1 7em;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 7em;
+}
 .menu-doc__leader {
   flex: 1 1 24px;
   min-width: 24px;
@@ -6056,7 +6071,8 @@ h2,
 }
 .menu-doc--cards .menu-doc__items {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 300px));
+  justify-content: center;
   gap: 18px;
 }
 .menu-doc--cards .menu-doc__item {

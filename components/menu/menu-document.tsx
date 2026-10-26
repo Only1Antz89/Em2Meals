@@ -36,7 +36,7 @@ export function MenuDocument({ menu }: { menu: PublicMenu }) {
   return (
     <article
       id="menu-print"
-      className={`menu-doc menu-doc--${theme.layout} menu-doc--${tone}`}
+      className={`menu-doc menu-doc--${theme.layout} menu-doc--${tone}${background.kind === "image" && background.value ? " menu-doc--photo" : ""}`}
       style={style}
       aria-label={menu.title}
     >
@@ -118,12 +118,14 @@ export function MenuDocument({ menu }: { menu: PublicMenu }) {
                         </span>
                       )}
                       {menu.showPrices && item.price != null && (
-                        <>
+                        // Leader and price wrap together, so on narrow
+                        // screens the price stays right-aligned on its line.
+                        <span className="menu-doc__price-row">
                           <span className="menu-doc__leader" aria-hidden="true" />
                           <span className="menu-doc__price">
                             {formatMenuPrice(item.price)}
                           </span>
-                        </>
+                        </span>
                       )}
                     </div>
                     {item.description && (

@@ -17,7 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { stages, today, type Order, type State } from "@/lib/domain";
-import type { BuildingDetails, Journey, MapPoint, VenueSearchResult } from "@/lib/venue-research";
+import type { BuildingDetails, Journey, MapPoint, StreetRule, VenueSearchResult } from "@/lib/venue-research";
 import { AutoSousMarkdown } from "./assistant-display";
 import { useOps } from "./ops-context";
 
@@ -165,6 +165,7 @@ type MapData = {
   base?: MapPoint | null;
   journey?: Journey | null;
   building?: BuildingDetails | null;
+  streetRules?: StreetRule[];
   mapError?: string;
 };
 
@@ -246,6 +247,108 @@ function JourneyCard({ data, order }: { data: MapData; order?: Order }) {
           ? `${traffic.label} right now${j.typicalMinutes ? ` (usually ${duration(j.typicalMinutes)})` : ""}`
           : "Typical journey time. Live traffic needs Google Maps set up."}
       </p>
+    </section>
+  );
+}
+
+// Same as WALKABLE_MINUTES on the server.
+const WALKABLE = 6;
+const RULE_TONE: Record<StreetRule["tone"], string> = {
+  ok: "You can park",
+  limited: "Restricted",
+  loading: "Loading",
+  no: "No parking",
+};
+const metres = (m: number) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${Math.round(m / 100) / 10} km`);
+
+// Where to park: car parks by walking time to the door, then what the kerb
+// allows on the streets right by the venue.
+function ParkingCard({
+  parking,
+  rules,
+  focus,
+  onFocus,
+  hasPlace,
+}: {
+  parking: MapPoint[];
+  rules: StreetRule[];
+  focus: number | null;
+  onFocus: (i: number) => void;
+  hasPlace: boolean;
+}) {
+  if (!hasPlace) return null;
+  const close = parking.filter((p) => (p.walkMinutes ?? 99) <= WALKABLE).length;
+  const canStop = rules.filter((r) => r.tone === "ok" || r.tone === "loading");
+  return (
+    <section className="venue-parking">
+      <h4>
+        <Car size={13} /> Where to park
+      </h4>
+      {parking.length ? (
+        <>
+          <p className="venue-overlay-note">
+            {close
+              ? `${close} car park${close === 1 ? "" : "s"} within a ${WALKABLE} minute walk. Nearest first.`
+              : `Nothing mapped within a ${WALKABLE} minute walk. ${canStop.length ? "Check the street rules below." : "Ask the venue about a loading bay or drop-off point."}`}
+          </p>
+          <ul>
+            {parking.map((p, i) => {
+              const near = (p.walkMinutes ?? 99) <= WALKABLE;
+              const notes = p.notes?.length ? p.notes : p.address ? [p.address] : [];
+              return (
+                <li key={`${p.latitude},${p.longitude}`}>
+                  <button type="button" className={`${focus === i ? "is-focused" : ""} ${near ? "is-near" : "is-far"}`} onClick={() => onFocus(i)}>
+                    <b>P</b>
+                    <span>
+                      <span className="venue-parking-name">
+                        {p.name}
+                        {p.walkMinutes ? (
+                          <em>
+                            {p.walkMinutes} min walk · {metres(p.walkMetres || 0)}
+                          </em>
+                        ) : null}
+                      </span>
+                      {notes.map((n) => (
+                        <small key={n} className={/may not fit a van/.test(n) ? "is-warning" : ""}>
+                          {n}
+                        </small>
+                      ))}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : (
+        <p className="venue-overlay-note">No public car parks mapped within a 15 minute walk.</p>
+      )}
+      {rules.length ? (
+        <div className="venue-kerb">
+          <h5>Street parking by the venue</h5>
+          <ul>
+            {rules.map((r) => (
+              <li key={`${r.street}|${r.side}|${r.rule}|${r.detail}`} className={`is-${r.tone}`}>
+                <span className="venue-kerb-dot" title={RULE_TONE[r.tone]} />
+                <span>
+                  <b>
+                    {r.street}
+                    {r.side ? <small> ({r.side})</small> : null}
+                  </b>
+                  <span>
+                    {r.rule}
+                    {r.detail ? `: ${r.detail}` : ""}
+                  </span>
+                </span>
+                <em>{metres(r.metres)}</em>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <small className="venue-overlay-note">
+        Walk times are estimates. Street rules come from OpenStreetMap and can be out of date or missing, so always check the signs.
+      </small>
     </section>
   );
 }
@@ -404,7 +507,15 @@ export function VenueMode({
   return (
     <div className={`venue-mode ${collapsed ? "is-collapsed" : ""} ${target ? "" : "is-idle"}`}>
       {webgl ? (
-        <VenueMap3D place={map.place} parking={map.parking} base={map.base || null} path={path} focus={focus} onFocus={setFocus} />
+        <VenueMap3D
+          place={map.place}
+          parking={map.parking}
+          base={map.base || null}
+          path={path}
+          kerb={map.streetRules || []}
+          focus={focus}
+          onFocus={setFocus}
+        />
       ) : (
         <VenueMap place={map.place} parking={map.parking} focus={focus} onFocus={setFocus} />
       )}
@@ -476,26 +587,7 @@ export function VenueMode({
                 </p>
               ) : null}
               <JourneyCard data={map} order={order} />
-              {map.parking.length ? (
-                <section className="venue-parking">
-                  <h4>
-                    <Car size={13} /> Where to park
-                  </h4>
-                  <ul>
-                    {map.parking.map((p, i) => (
-                      <li key={`${p.latitude},${p.longitude}`}>
-                        <button type="button" className={focus === i ? "is-focused" : ""} onClick={() => setFocus(i)}>
-                          <b>P</b>
-                          <span>
-                            {p.name}
-                            {p.address ? <small>{p.address}</small> : null}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
+              <ParkingCard parking={map.parking} rules={map.streetRules || []} focus={focus} onFocus={setFocus} hasPlace={!!map.place} />
               <BuildingCard b={map.building} />
               {target.kind === "order" ? (
                 order?.venueResearch && venueResearched(order) ? (

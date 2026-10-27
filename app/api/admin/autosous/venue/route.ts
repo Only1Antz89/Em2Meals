@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { owner, sameOrigin, jsonBody, errorResponse, loadState } from "@/lib/server";
 import { rateLimit } from "@/lib/upgrade-server";
-import { geocode, researchVenue, venueContext, venueMap } from "@/lib/venue-research";
+import { geocode, researchVenue, venueContext, venueMap, withWalking } from "@/lib/venue-research";
 
 // Venue mode on the AutoSous page.
 // - { query }: research any venue or address, with its map and car parks.
@@ -50,7 +50,8 @@ export async function POST(req: Request) {
         ],
         place,
       );
-      // Car parks found with Google during the order's research come first.
+      // Car parks found with Google during the order's research, merged with
+      // OpenStreetMap's, nearest walk first.
       const saved = (o.venueResearch?.carParks || []).map((c) => ({
         name: c.name,
         address: c.address,
@@ -59,7 +60,8 @@ export async function POST(req: Request) {
         url: c.mapUrl,
       }));
       const context = await venueContext(state.settings.kitchen, map.place);
-      return Response.json({ ...map, ...context, parking: saved.length ? saved : map.parking });
+      const parking = map.place ? withWalking(map.place, [...map.parking, ...saved]) : saved;
+      return Response.json({ ...map, ...context, parking });
     }
     const { state } = await loadState(p.mode);
     return Response.json(await researchVenue(p.query!, p.refresh, state.settings.kitchen));

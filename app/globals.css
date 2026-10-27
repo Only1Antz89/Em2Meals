@@ -7885,7 +7885,7 @@ h2,
   border-color: #2b6cb0;
   background: #eef5fc;
 }
-.venue-parking b {
+.venue-parking button > b {
   flex: none;
   width: 20px;
   height: 20px;
@@ -8160,3 +8160,81 @@ h2,
 .venue-mode .venue-map-canvas.leaflet-container {
   position: absolute;
 }
+
+/* Parking: walk times and street rules */
+.venue-parking-name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+.venue-parking-name em {
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #2f7d50;
+}
+.venue-parking button.is-far > b {
+  background: #8a9893;
+}
+.venue-parking button.is-far .venue-parking-name em {
+  color: #6a7872;
+}
+.venue-parking small.is-warning {
+  color: #a4581c;
+  font-weight: 600;
+}
+.venue-pin3d.is-parking.is-far {
+  opacity: 0.6;
+}
+.venue-kerb {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #e3e8e5;
+}
+.venue-kerb h5 {
+  margin: 0 0 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #3b4a44;
+}
+.venue-kerb ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.venue-kerb li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  font-size: 0.78rem;
+}
+.venue-kerb li > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+}
+.venue-kerb li b small {
+  display: inline;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: #6a7872;
+}
+.venue-kerb li em {
+  font-style: normal;
+  font-size: 0.7rem;
+  color: #6a7872;
+}
+.venue-kerb-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border-radius: 3px;
+  background: #2f9e5b;
+}
+.venue-kerb li.is-limited .venue-kerb-dot { background: #e0a443; }
+.venue-kerb li.is-loading .venue-kerb-dot { background: #2b6cb0; }
+.venue-kerb li.is-no .venue-kerb-dot { background: #d0453a; }

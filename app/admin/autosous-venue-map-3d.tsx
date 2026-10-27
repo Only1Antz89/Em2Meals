@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type * as MapLibre from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { MapPoint } from "@/lib/venue-research";
+import type { MapPoint, StreetRule } from "@/lib/venue-research";
 
 // A tilted 3D map for venue research: 3D buildings, the drive from the
 // kitchen drawn on, and pins for the kitchen, the venue and car parks. The
@@ -35,8 +35,17 @@ type Props = {
   parking: MapPoint[];
   base: MapPoint | null;
   path: [number, number][];
+  // Street parking rules, drawn along the kerb in green, amber, blue or red.
+  kerb?: StreetRule[];
   focus?: number | null;
   onFocus?: (index: number | null) => void;
+};
+
+const KERB_COLOUR: Record<StreetRule["tone"], string> = {
+  ok: "#2f9e5b",
+  limited: "#e0a443",
+  loading: "#2b6cb0",
+  no: "#d0453a",
 };
 
 const esc = (t: string) =>
@@ -82,7 +91,7 @@ function ensureBuildings(map: MapLibre.Map) {
   }
 }
 
-export function VenueMap3D({ place, parking, base, path, focus, onFocus }: Props) {
+export function VenueMap3D({ place, parking, base, path, kerb = [], focus, onFocus }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibre.Map | null>(null);
   const lib = useRef<typeof MapLibre | null>(null);
@@ -163,11 +172,16 @@ export function VenueMap3D({ place, parking, base, path, focus, onFocus }: Props
       );
     parking.forEach((p, i) => {
       const element = pinElement("parking", "P");
+      if ((p.walkMinutes ?? 0) > 6) element.classList.add("is-far");
       element.addEventListener("click", () => focusRef.current?.(i));
       parkMarkers.current.push(
         new ml.Marker({ element, anchor: "bottom" })
           .setLngLat([p.longitude, p.latitude])
-          .setPopup(new ml.Popup({ offset: 24 }).setHTML(`<strong>${esc(p.name)}</strong>${p.address ? `<br>${esc(p.address)}` : ""}`))
+          .setPopup(
+            new ml.Popup({ offset: 24 }).setHTML(
+              `<strong>${esc(p.name)}</strong>${p.walkMinutes ? `<br>${p.walkMinutes} min walk to the venue` : ""}${p.address ? `<br>${esc(p.address)}` : ""}`,
+            ),
+          )
           .addTo(m),
       );
     });
@@ -264,6 +278,42 @@ export function VenueMap3D({ place, parking, base, path, focus, onFocus }: Props
       };
     }
   }, [ready, place, parking, base, path]);
+
+  // Street parking rules along the kerb, under the route line.
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    const data: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: kerb
+        .filter((r) => r.path.length > 1)
+        .map((r) => ({
+          type: "Feature",
+          properties: {
+            colour: KERB_COLOUR[r.tone],
+            // Each side drawn along its own kerb.
+            offset: r.side === "left side" ? -5 : r.side === "right side" ? 5 : 0,
+          },
+          geometry: { type: "LineString", coordinates: r.path },
+        })),
+    };
+    const src = m.getSource("em2-kerb") as MapLibre.GeoJSONSource | undefined;
+    if (src) src.setData(data);
+    else {
+      m.addSource("em2-kerb", { type: "geojson", data });
+      m.addLayer(
+        {
+          id: "em2-kerb",
+          type: "line",
+          source: "em2-kerb",
+          minzoom: 14,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": ["get", "colour"], "line-width": 5, "line-opacity": 0.85, "line-offset": ["get", "offset"] },
+        },
+        m.getLayer("em2-route-casing") ? "em2-route-casing" : undefined,
+      );
+    }
+  }, [ready, kerb]);
 
   // Fly to a car park chosen in the card.
   useEffect(() => {

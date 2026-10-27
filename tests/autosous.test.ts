@@ -5,7 +5,7 @@ import { sampleState } from "../lib/sample";
 import { workspaceAlerts } from "../lib/autosous-alerts";
 import { kitchenBriefing } from "../lib/autosous-briefing";
 import { alertMatches, parseFeed } from "../lib/food-safety";
-import { decodePolyline } from "../lib/venue-research";
+import { carParkNotes, decodePolyline, kerbRule, withWalking } from "../lib/venue-research";
 
 const act = (s: State, type: string, payload: unknown) =>
   applyCommand(s, { id: crypto.randomUUID(), type, payload }, "test-owner");
@@ -180,4 +180,37 @@ test("route lines decode from Google's polyline format", () => {
     path.map(([lng, lat]) => [Math.round(lng * 1000) / 1000, Math.round(lat * 1000) / 1000]),
     [[-120.2, 38.5], [-120.95, 40.7], [-126.453, 43.252]],
   );
+});
+
+test("car parks are sorted by walk to the venue and far ones dropped", () => {
+  const venue = { latitude: 51.5079, longitude: -0.0877 };
+  const p = (name: string, latitude: number, longitude: number) => ({ name, address: "", latitude, longitude });
+  const out = withWalking(venue, [
+    p("Far", 51.52, -0.0877), // about 1.4 km away: dropped
+    p("Middle", 51.5105, -0.0877),
+    p("Near", 51.5085, -0.0877),
+    p("Near again", 51.50852, -0.08771), // duplicate of Near
+  ]);
+  assert.deepEqual(out.map((x) => x.name), ["Near", "Middle"]);
+  assert.ok(out[0].walkMinutes! <= 2 && out[1].walkMinutes! >= 4);
+});
+
+test("car park notes flag height limits for vans", () => {
+  const notes = carParkNotes({ parking: "multi-storey", fee: "yes", capacity: "200", maxheight: "2.1", opening_hours: "24/7" });
+  assert.equal(notes[0], "Multi-storey · Pay to park · 200 spaces");
+  assert.ok(notes.includes("Open 24 hours"));
+  assert.ok(notes.some((n) => /2\.1 m: may not fit a van/.test(n)));
+});
+
+test("kerb rules read both OpenStreetMap parking schemes", () => {
+  assert.equal(kerbRule({ "parking:both": "no" }, "both")?.tone, "no");
+  assert.equal(kerbRule({ "parking:both:restriction": "no_stopping" }, "both")?.rule, "No stopping");
+  const yellow = kerbRule({ "parking:left": "lane", "parking:left:restriction:conditional": "no_parking @ (Mo-Sa 08:30-18:30)" }, "left");
+  assert.equal(yellow?.rule, "No parking at set times");
+  assert.match(yellow!.detail, /Mo-Sa 08:30-18:30/);
+  assert.equal(kerbRule({ "parking:right": "lane", "parking:right:fee": "yes", "parking:right:maxstay": "2 hours" }, "right")?.detail, "max stay 2 hours");
+  assert.equal(kerbRule({ "parking:lane:both": "parallel", "parking:condition:both": "residents" }, "both")?.tone, "no");
+  assert.equal(kerbRule({ "parking:both:restriction": "loading_only" }, "both")?.tone, "loading");
+  assert.equal(kerbRule({ "parking:both": "separate" }, "both"), null);
+  assert.equal(kerbRule({ highway: "residential" }, "both"), null);
 });

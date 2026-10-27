@@ -3013,6 +3013,65 @@ h2,
   font-size: 0.8rem;
   color: #71837d;
 }
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 9px 16px 9px 12px;
+  border: 1px solid #244c3b;
+  border-radius: 999px;
+  background: #fff;
+  color: #244c3b;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.back-button:hover,
+.back-button:focus-visible {
+  background: #244c3b;
+  color: #fff;
+}
+.next-step {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  margin: -8px 0 22px;
+  padding: 14px 18px;
+  border-left: 4px solid #b17a36;
+  background: #fbf6ec;
+}
+.next-step.closed {
+  border-left-color: #9da7a1;
+  background: #f1f3ef;
+}
+.next-step .eyebrow {
+  flex: none;
+}
+.next-step p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #2b3a34;
+}
+.next-step a {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.stage-track .current span {
+  box-shadow: 0 0 0 4px #d6e3da;
+}
+.stage-track .current small {
+  font-weight: 700;
+  color: #244c3b;
+}
+.stage-track.closed {
+  opacity: 0.55;
+}
+.order-cost .outline-link {
+  white-space: nowrap;
+  align-self: center;
+}
 .order-title {
   display: flex;
   justify-content: space-between;
@@ -6835,4 +6894,48 @@ h2,
 /* Section numbers on the dark corporate operations band. */
 .corporate-operations__heading > .section-index {
   color: #8999a0;
+}
+@media (max-width: 760px) {
+  .next-step {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+.business-attention {
+  margin: -6px 0 24px;
+  padding: 14px 18px;
+  border-left: 4px solid #b17a36;
+  background: #fbf6ec;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.business-attention ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.business-attention a,
+.data-quality > a {
+  font-weight: 600;
+}
+.data-quality > a {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+.invoice-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.success-message {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-left: 4px solid #35594c;
+  background: #eef4ef;
+  color: #244c3b;
+  font-size: 0.85rem;
+}
+.tag.plain {
+  text-transform: none;
 }

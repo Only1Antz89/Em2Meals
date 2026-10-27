@@ -16,6 +16,7 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
+  ArrowLeft,
   ArrowRight,
   Send,
   ChevronUp,
@@ -391,6 +392,16 @@ export function AdminEditor({
     </Dialog>
   );
 }
+const businessIntro: Record<string, string> = {
+  overview:
+    "Sales, cash, costs and profit for the dates you choose. Every figure links back to its records.",
+  purchasing:
+    "What to buy for accepted orders, and the supplier requests you've drafted or sent.",
+  invoices:
+    "Draft, issue and track invoices. Record payments as they arrive.",
+  costs:
+    "Record expenses, labour and journeys, and link payments you've received.",
+};
 export default function Admin({
   section,
   ownerEmail,
@@ -814,6 +825,12 @@ export default function Admin({
                 Changes here never affect live records.
               </div>
             )}
+            {page === "orders" && section[1] && (
+              <a className="back-button" href={href("orders")}>
+                <ArrowLeft size={17} aria-hidden="true" />
+                Back to enquiries & orders
+              </a>
+            )}
             {!(page === "crm" && section[1] === "client") && <div className="ops-heading">
               <div>
                 <span className="eyebrow">
@@ -832,13 +849,20 @@ export default function Admin({
                       : "A good day starts here."}
                   {(!section[1] || page !== "orders") && page ? title : ""}
                 </h1>
-                <p>
-                  {page === ""
-                    ? "Your kitchen, your customers, your next occasion."
-                    : page === "crm"
-                      ? "Manage your clients, enquiries and follow-ups. Build lasting relationships through great food."
-                      : "Keep the details together. Give the food your attention."}
-                </p>
+                {!(page === "orders" && section[1]) && (
+                  <p>
+                    {page === ""
+                      ? "Your kitchen, your customers, your next occasion."
+                      : page === "crm"
+                        ? "Manage your clients, enquiries and follow-ups. Build lasting relationships through great food."
+                        : page === "business"
+                          ? businessIntro[
+                                navigationParams.get("tab") ||
+                                "overview"
+                            ] || businessIntro.overview
+                          : "Keep the details together. Give the food your attention."}
+                  </p>
+                )}
               </div>
               {page === "" && (
                 <a className="outline-link" href={href("orders")}>

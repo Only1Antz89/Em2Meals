@@ -664,6 +664,14 @@ export function businessReport(s: State, f: ReportFilter) {
     cashIn,
     cashOut,
     cashChange: cashIn - cashOut,
+    // Money received that isn't matched to an issued invoice, and invoices
+    // still in draft. Either explains cash that doesn't show up as sales.
+    unlinkedIncome: cash
+      .filter((x) => x.type === "income" && !x.invoiceId)
+      .reduce((n, x) => n + x.amount, 0),
+    draftInvoices: s.invoices.filter(
+      (i) => i.kind === "invoice" && i.status === "draft" && ids.has(i.orderId),
+    ),
     salesNet: signed("net"),
     vat: signed("vat"),
     salesGross: signed("total"),

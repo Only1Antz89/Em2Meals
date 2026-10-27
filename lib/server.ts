@@ -3,7 +3,7 @@ import { getDb } from "@/db";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { authMode } from "./auth-mode";
 import { emptyState, type State, type Command, applyCommand } from "./domain";
-import { sampleState } from "./sample";
+import { SAMPLE_VERSION, sampleState } from "./sample";
 import { liveMenu, type PublicMenu } from "./menu";
 import { normaliseState, reconcileStock } from "./operations";
 import { assertStateIntegrity, assertStateShape } from "./state-integrity";
@@ -91,10 +91,30 @@ export async function loadState(mode = "live") {
   // Sample workspaces are disposable demonstrations. Refresh an older sample
   // snapshot as a unit so the v5 recipe imagery, stock, purchasing history and
   // costing examples stay internally consistent. Live data is only normalised.
-  const state =
-    id === "sample" && (!original.schemaVersion || original.schemaVersion < 5)
-      ? sampleState()
-      : normaliseState(original);
+  const staleSample =
+    id === "sample" &&
+    (!original.schemaVersion ||
+      original.schemaVersion < 5 ||
+      (original.sampleVersion ?? 0) < SAMPLE_VERSION);
+  if (staleSample) {
+    // Save the refreshed sample before using it. Generated ids would otherwise
+    // change on every load and break the next action that refers to them. If
+    // another request refreshed it first, this update matches nothing and the
+    // reload below picks up that copy instead.
+    await db
+      .prepare(
+        "UPDATE workspaces SET data=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?",
+      )
+      .bind(
+        JSON.stringify(sampleState()),
+        new Date().toISOString(),
+        id,
+        row.revision,
+      )
+      .run();
+    return loadState(mode);
+  }
+  const state = normaliseState(original);
   reconcileStock(state);
   assertStateIntegrity(state);
   if (id === "live" && state.drafts.length) {

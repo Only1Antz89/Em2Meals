@@ -2,8 +2,6 @@
 import { useMemo, useState } from "react";
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
   BarChart,
   Bar,
   XAxis,
@@ -81,6 +79,8 @@ export default function BusinessOverview({
     { name: "Operating costs", cost: b.operating / 100 },
     { name: "Stock losses", cost: b.losses / 100 },
   ];
+  const draftTotal = b.draftInvoices.reduce((n, i) => n + i.total, 0);
+  const tabHref = (tab: string) => `${href("business")}&tab=${tab}`;
   const comparison = (current: number, prior: number) =>
     prior === 0
       ? `Previous period: ${money(prior)}`
@@ -194,6 +194,28 @@ export default function BusinessOverview({
           detail={`${money(b.overdue)} overdue · as of ${f.to}`}
         />
       </div>
+      {(b.unlinkedIncome > 0 || b.draftInvoices.length > 0) && (
+        <div className="business-attention" role="status">
+          <strong>Not counted as sales yet</strong>
+          <ul>
+            {b.draftInvoices.length > 0 && (
+              <li>
+                {b.draftInvoices.length} invoice
+                {b.draftInvoices.length === 1 ? " is" : "s are"} still a draft (
+                {money(draftTotal)}). Drafts don&apos;t count as sales until
+                issued. <a href={tabHref("invoices")}>Review invoices →</a>
+              </li>
+            )}
+            {b.unlinkedIncome > 0 && (
+              <li>
+                {money(b.unlinkedIncome)} of cash received isn&apos;t matched to
+                an issued invoice.{" "}
+                <a href={tabHref("costs")}>Link payments →</a>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
       <Panel
         title="Completed-job profitability"
         action={
@@ -322,6 +344,9 @@ export default function BusinessOverview({
                 </li>
               )}
             </ul>
+            <a href={tabHref("costs")}>
+              Record labour, journeys and expenses in Costs & travel →
+            </a>
           </details>
         )}
       </Panel>
@@ -329,30 +354,29 @@ export default function BusinessOverview({
         <Panel title="Invoiced sales and cash received">
           <ChartFrame title="Monthly sales excluding VAT and cash received in pounds; table follows">
             <ResponsiveContainer width="100%" height="100%" minWidth={1}>
-              <LineChart data={trend}>
+              <BarChart data={trend}>
                 <Legend />
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="month" />
                 <YAxis tickFormatter={pounds} width={72} />
-                <Tooltip />
-                <Line
-                  name="Sales ex VAT (£)"
-                  type="linear"
+                <Tooltip formatter={(v) => money(Number(v) * 100)} />
+                <Bar
+                  name="Sales ex VAT"
                   dataKey="sales"
-                  stroke="#244c3b"
-                  strokeWidth={3}
+                  fill="#244c3b"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={36}
                   isAnimationActive={false}
                 />
-                <Line
-                  name="Cash received (£)"
-                  type="linear"
+                <Bar
+                  name="Cash received"
                   dataKey="cash"
-                  stroke="#b17a36"
-                  strokeWidth={2}
-                  strokeDasharray="5 4"
+                  fill="#b17a36"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={36}
                   isAnimationActive={false}
                 />
-              </LineChart>
+              </BarChart>
             </ResponsiveContainer>
           </ChartFrame>
           <details>
@@ -423,9 +447,9 @@ export default function BusinessOverview({
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" tickFormatter={pounds} />
                 <YAxis type="category" dataKey="name" width={108} />
-                <Tooltip />
+                <Tooltip formatter={(v) => money(Number(v) * 100)} />
                 <Bar
-                  name="Cost (£)"
+                  name="Cost"
                   dataKey="cost"
                   fill="#ad7c44"
                   isAnimationActive={false}

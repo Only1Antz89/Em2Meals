@@ -25,10 +25,10 @@ import { IngredientName } from "./ingredient-name";
 import { Panel, GridTable, Tag, draftFields } from "./admin-client";
 import { useOps } from "./ops-context";
 import { DeleteEnquiry } from "./privacy-actions";
+import { shortage } from "@/lib/operations";
 import {
   money,
   recipeCost,
-  needs,
   stages,
   type Order,
   type Attendee,
@@ -40,13 +40,17 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
   const [error, setError] = useState(""),
     [analysisError, setAnalysisError] = useState(""),
     [cancel, setCancel] = useState(false),
+    [decline, setDecline] = useState(false),
     [edit, setEdit] = useState<Order | null>(null),
     [review, setReview] = useState<Attendee[] | null>(null),
     [reviewConfirmed, setReviewConfirmed] = useState(false);
   if (!o)
     return (
       <Panel title="Order not found">
-        <a href={href("orders")}>Back to orders</a>
+        <p className="panel-note">
+          This order may have been deleted, or the link belongs to the other
+          workspace (live or sample).
+        </p>
       </Panel>
     );
   const order = o;
@@ -65,7 +69,6 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
         | undefined
     )?.meals || [];
   const editable = ["enquiry", "quote"].includes(o.status);
-  const required = needs(s, o);
   const quote = o.quotes.at(-1);
   const net = quote?.net || 0;
   const cost =
@@ -81,11 +84,88 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
     o.status === "confirmed" || o.status === "ingredients needed"
       ? "ingredients ready"
       : stages[stages.indexOf(o.status as Stage) + 1];
+  const closed = ["delivered", "cancelled", "declined"].includes(o.status);
+  const short = shortage(s, o).filter((l) => l.shortage > 1e-6);
+  const unitOf = (id: string) =>
+    s.ingredients.find((i) => i.id === id)?.unit || "";
+  const nameOf = (id: string) =>
+    s.ingredients.find((i) => i.id === id)?.name || "Unknown ingredient";
+  // Reasons the next stage would be refused, so the page can say so up front.
+  const acceptBlockers = [
+    !o.quotes.length && "prepare a quote",
+    !o.items.length && "add the meals",
+    !o.allergyReviewed && "review the dietary requirements",
+    (!o.details.date || !o.details.address) &&
+      "add the event date and venue address (Edit order & meals)",
+  ].filter(Boolean) as string[];
+  const nextBlocker =
+    next === "ingredients ready" && short.length
+      ? `${short.length} ingredient${short.length === 1 ? " is" : "s are"} short`
+      : "";
+  const cancelNeedsReconcile =
+    ["prepared", "cooked"].includes(o.status) && !o.consumed;
+  const invoice = s.invoices.find(
+    (i) => i.orderId === o.id && i.kind === "invoice",
+  );
+  const invoiceCredits = invoice
+    ? s.invoices
+        .filter((c) => c.originalId === invoice.id && c.status === "issued")
+        .reduce((n, c) => n + c.total, 0)
+    : 0;
+  const invoiceBalance = invoice
+    ? Math.max(0, invoice.total - invoice.paid - invoiceCredits)
+    : 0;
+  const invoicesHref = `${href("business")}&tab=invoices`;
+  let step: { text: string; link?: [string, string] };
+  if (o.status === "cancelled" || o.status === "declined")
+    step = {
+      text: `This order was ${o.status}. It is closed and can't be changed.`,
+    };
+  else if (o.status === "delivered")
+    step = !invoice
+      ? {
+          text: "Delivered, but there is no invoice for this order yet. Create one from the economics panel below.",
+        }
+      : invoice.status === "draft"
+        ? {
+            text: "Delivered. The invoice is still a draft: check the billing details and issue it.",
+            link: [invoicesHref, "Open invoices"],
+          }
+        : invoiceBalance > 0
+          ? {
+              text: `Delivered. Invoice ${invoice.number} is issued with ${money(invoiceBalance)} still to pay.`,
+              link: [invoicesHref, "Record a payment"],
+            }
+          : {
+              text: `Delivered and paid in full (invoice ${invoice.number}). Nothing left to do.`,
+            };
+  else if (o.status === "enquiry")
+    step = {
+      text: o.items.length
+        ? "Check the request and dietary needs, then prepare a quote."
+        : "Match the request to meals with Edit order & meals, then prepare a quote.",
+    };
+  else if (o.status === "quote")
+    step = acceptBlockers.length
+      ? {
+          text: `Before you can record the customer's acceptance: ${acceptBlockers.join(", ")}.`,
+        }
+      : {
+          text: "Quote ready. Send the quote email, then record acceptance once the customer agrees.",
+        };
+  else if (nextBlocker)
+    step = {
+      text: `Not enough in-date stock yet. Short: ${short
+        .map(
+          (l) =>
+            `${nameOf(l.ingredientId)} ${+l.shortage.toFixed(2)} ${unitOf(l.ingredientId)}`,
+        )
+        .join(", ")}. Order and receive it, then mark ingredients ready.`,
+      link: [`${href("business")}&tab=purchasing`, "Go to purchasing"],
+    };
+  else step = { text: `When this stage is done, mark the order ${next}.` };
   return (
     <>
-      <a className="back-link" href={href("orders")}>
-        ← Enquiries & orders
-      </a>
       <div className="order-title">
         <div>
           <span className="eyebrow">{o.reference}</span>
@@ -95,7 +175,29 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
             {o.details.date || "Date to confirm"}
           </p>
         </div>
-        <Tag>{o.status}</Tag>
+        <Tag
+          tone={
+            o.status === "delivered"
+              ? "green"
+              : o.status === "cancelled" || o.status === "declined"
+                ? "red"
+                : ""
+          }
+        >
+          {o.status}
+        </Tag>
+      </div>
+      <div className={"next-step" + (closed ? " closed" : "")} role="status">
+        <span className="eyebrow">{closed ? "Status" : "Next step"}</span>
+        <p>
+          {step.text}
+          {step.link && (
+            <>
+              {" "}
+              <a href={step.link[0]}>{step.link[1]} →</a>
+            </>
+          )}
+        </p>
       </div>
       {error && (
         <p role="alert" className="error-message">
@@ -160,18 +262,14 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
             >
               Prepare quote
             </Button>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() =>
-                safe(() => run("stage", { orderId: o.id, status: "declined" }))
-              }
-            >
-              Decline enquiry
-            </Button>
             {o.status === "quote" && (
               <Button
-                disabled={busy}
+                disabled={busy || acceptBlockers.length > 0}
+                title={
+                  acceptBlockers.length
+                    ? `First ${acceptBlockers.join(", ")}`
+                    : undefined
+                }
                 onClick={() =>
                   safe(() =>
                     run("stage", { orderId: o.id, status: "confirmed" }),
@@ -186,7 +284,8 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
         {!editable &&
           !["delivered", "cancelled", "declined"].includes(o.status) && (
             <Button
-              disabled={busy}
+              disabled={busy || !!nextBlocker}
+              title={nextBlocker || undefined}
               onClick={() =>
                 safe(() => run("stage", { orderId: o.id, status: next }))
               }
@@ -194,17 +293,30 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
               Mark {next}
             </Button>
           )}
-        {!["cancelled", "declined", "delivered"].includes(o.status) && (
+        {editable && (
+          <Button variant="ghost" onClick={() => setDecline(true)}>
+            Decline enquiry
+          </Button>
+        )}
+        {!editable && !closed && (
           <Button variant="ghost" onClick={() => setCancel(true)}>
             Cancel order
           </Button>
         )}
         <DeleteEnquiry order={o} />
       </div>
-      <div className="stage-track">
+      <div
+        className={
+          "stage-track" + (closed && o.status !== "delivered" ? " closed" : "")
+        }
+        aria-label={`Order progress: ${o.status}`}
+      >
         {stages.map((status, i) => (
           <div
-            className={i <= stages.indexOf(o.status as Stage) ? "reached" : ""}
+            className={
+              (i <= stages.indexOf(o.status as Stage) ? "reached" : "") +
+              (i === stages.indexOf(o.status as Stage) ? " current" : "")
+            }
             key={status}
           >
             <span>{i + 1}</span>
@@ -276,6 +388,48 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
               <span>Contribution before labour, travel & overhead</span>
               <strong>{quote ? money(net - cost) : "—"}</strong>
             </div>
+            <div>
+              <span>
+                Invoice
+                <small className="subtext">
+                  {!invoice
+                    ? ["enquiry", "quote"].includes(o.status)
+                      ? "Created automatically when the quote is accepted"
+                      : "No invoice yet"
+                    : invoice.status === "draft"
+                      ? "Draft, not yet issued to the customer"
+                      : invoiceBalance > 0
+                        ? `${invoice.number} · ${money(invoice.paid)} paid of ${money(invoice.total)}`
+                        : `${invoice.number} · paid in full`}
+                </small>
+              </span>
+              {!invoice &&
+              o.quotes.length > 0 &&
+              !["enquiry", "quote", "cancelled", "declined"].includes(
+                o.status,
+              ) ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    safe(() => run("invoice-create", { orderId: o.id }))
+                  }
+                >
+                  Create invoice draft
+                </Button>
+              ) : invoice ? (
+                <a className="outline-link" href={invoicesHref}>
+                  {invoice.status === "draft"
+                    ? "Review draft"
+                    : invoiceBalance > 0
+                      ? `${money(invoiceBalance)} due`
+                      : "View invoice"}
+                </a>
+              ) : (
+                <strong>—</strong>
+              )}
+            </div>
           </div>
           <GridTable
             heads={["Version", "Net", "VAT rate", "VAT amount", "Total"]}
@@ -344,8 +498,8 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                     })
                   ).map((l, i) => (
                     <li key={i}>
-                      <IngredientName name={l.name} id={l.ingredientId} />{" "}
-                      · {Math.round(l.quantity * 100) / 100}{" "}
+                      <IngredientName name={l.name} id={l.ingredientId} /> ·{" "}
+                      {Math.round(l.quantity * 100) / 100}{" "}
                       {s.ingredients.find((i) => i.id === l.ingredientId)?.unit}{" "}
                       · {money(Math.round(l.cost))}
                     </li>
@@ -359,44 +513,37 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
           })}
         />
       </Panel>
-      <Panel
-        title="Dietary requirements & named meals"
-        action={
-          <Tag tone={o.allergyReviewed ? "green" : "amber"}>
-            {o.allergyReviewed ? "Owner reviewed" : "Review required"}
-          </Tag>
-        }
-      >
-        <p className="panel-note">
-          {o.details.dietary ||
-            "No general requirements supplied. Confirm with the customer."}
-        </p>
-        <GridTable
-          heads={["Guest reference", "Requirement", "Assigned meal", "Review"]}
-          rows={o.details.requirements.map((r) => [
-            r.reference,
-            r.requirements,
-            s.recipes.find((x) => x.id === r.meal)?.variant || "Unassigned",
-            r.reviewed ? "Reviewed" : "Pending",
-          ])}
-        />
-        <p className="panel-note">
-          Check ingredient labels and cross-contact arrangements. A meal
-          assignment does not itself establish allergen safety.
-        </p>
-      </Panel>
       <div className="ops-columns">
-        <Panel title="Ingredients required">
+        <Panel
+          title="Dietary requirements & named meals"
+          action={
+            <Tag tone={o.allergyReviewed ? "green" : "amber"}>
+              {o.allergyReviewed ? "Owner reviewed" : "Review required"}
+            </Tag>
+          }
+        >
+          <p className="panel-note">
+            {o.details.dietary ||
+              "No general requirements supplied. Confirm with the customer."}
+          </p>
           <GridTable
-            heads={["Ingredient", "Gross quantity", "Reserved"]}
-            rows={Object.entries(required).map(([id, quantity]) => [
-              <IngredientName key="name" id={id} />,
-              `${Math.round(quantity * 100) / 100} ${s.ingredients.find((i) => i.id === id)?.unit}`,
-              o.consumed
-                ? "Consumed"
-                : `${Math.round(o.reservations.filter((r) => s.batches.find((b) => b.id === r.batchId)?.ingredientId === id).reduce((v, r) => v + r.quantity, 0) * 100) / 100}`,
+            heads={[
+              "Guest reference",
+              "Requirement",
+              "Assigned meal",
+              "Review",
+            ]}
+            rows={o.details.requirements.map((r) => [
+              r.reference,
+              r.requirements,
+              s.recipes.find((x) => x.id === r.meal)?.variant || "Unassigned",
+              r.reviewed ? "Reviewed" : "Pending",
             ])}
           />
+          <p className="panel-note">
+            Check ingredient labels and cross-contact arrangements. A meal
+            assignment does not itself establish allergen safety.
+          </p>
         </Panel>
         <Panel
           title="AutoSous enquiry review"
@@ -406,14 +553,9 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
               disabled={busy}
               onClick={() => {
                 setAnalysisError("");
-                safe(async () => {
-                  try {
-                    await api("analysis", { orderId: o.id });
-                  } catch (e) {
-                    setAnalysisError((e as Error).message);
-                    throw e;
-                  }
-                });
+                api("analysis", { orderId: o.id }).catch((e) =>
+                  setAnalysisError((e as Error).message),
+                );
               }}
             >
               {busy ? "Working…" : "Analyse request"}
@@ -499,18 +641,54 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel this order?</AlertDialogTitle>
             <AlertDialogDescription>
-              Reservations will be released. Ingredients already consumed remain
-              recorded and will not be returned to stock.
+              {cancelNeedsReconcile
+                ? "Food has already been prepared, so first record what was used. Use “Reconcile & cancel” in the stock section below: it returns the rest to stock and cancels the order."
+                : "Reservations will be released. Ingredients already consumed stay recorded and are not returned to stock. This can't be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep order</AlertDialogCancel>
+            {cancelNeedsReconcile ? (
+              <AlertDialogAction
+                onClick={() =>
+                  document
+                    .getElementById("order-stock")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
+              >
+                Go to stock section
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                onClick={() =>
+                  safe(() =>
+                    run("stage", { orderId: o.id, status: "cancelled" }),
+                  )
+                }
+              >
+                Cancel order
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={decline} onOpenChange={setDecline}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Decline this enquiry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The enquiry is closed and can&apos;t be reopened or quoted again.
+              Nothing is sent to the customer automatically.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep enquiry</AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
-                safe(() => run("stage", { orderId: o.id, status: "cancelled" }))
+                safe(() => run("stage", { orderId: o.id, status: "declined" }))
               }
             >
-              Cancel order
+              Decline enquiry
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -622,7 +800,10 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                   ["postcode", "Postcode", "text"],
                   ["locality", "Locality", "text"],
                 ].map(([k, label, type]) => {
-                  const detailsRecord = edit.details as unknown as Record<string, string | number | undefined>;
+                  const detailsRecord = edit.details as unknown as Record<
+                    string,
+                    string | number | undefined
+                  >;
                   return (
                     <Field
                       key={k}
@@ -647,14 +828,20 @@ export default function OrderPanel({ orderId }: { orderId: string }) {
                   ["access", "Building access"],
                   ["unknownDetails", "Outstanding details"],
                 ].map(([k, label]) => {
-                  const detailsRecord = edit.details as unknown as Record<string, string | undefined>;
+                  const detailsRecord = edit.details as unknown as Record<
+                    string,
+                    string | undefined
+                  >;
                   return (
                     <Notes
                       key={k}
                       label={label}
                       value={detailsRecord[k] || ""}
                       onChange={(v) =>
-                        setEdit({ ...edit, details: { ...edit.details, [k]: v } })
+                        setEdit({
+                          ...edit,
+                          details: { ...edit.details, [k]: v },
+                        })
                       }
                     />
                   );

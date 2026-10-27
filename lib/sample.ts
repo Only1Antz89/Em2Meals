@@ -5,8 +5,11 @@ import {
   type State,
   type Enquiry,
 } from "./domain";
+// Bump when the generated sample changes so stored sample workspaces refresh.
+export const SAMPLE_VERSION = 2;
 export function sampleState(): State {
   let s = emptyState();
+  s.sampleVersion = SAMPLE_VERSION;
   const run = (type: string, payload: unknown) => {
     s = applyCommand(
       s,
@@ -20,6 +23,11 @@ export function sampleState(): State {
     mpg: 32,
     fuelPrice: 1.5,
     vatRate: 20,
+    businessName: "Fork Goodness Baked",
+    businessAddress: "1 Example Yard, London SE1 0AA (sample address)",
+    vatNumber: "GB000000000 (sample)",
+    paymentInstructions:
+      "Sample only: bank transfer to sort code 00-00-00, account 00000000, quoting the invoice number.",
   };
   for (const supplier of [
     {
@@ -284,21 +292,65 @@ export function sampleState(): State {
     reason: "Two attendees were absent; no dislike inferred.",
     date: today(),
   });
-  run("finance", {
-    type: "income",
-    amount: 50400,
-    category: "Catering",
-    description: "Northbank lunch payment · example",
-    date: today(),
-    orderId: "sample-delivered",
-  });
-  run("finance", {
-    type: "expense",
-    amount: 8000,
-    category: "Kitchen hire",
+  // Bill the delivered job properly: issue its invoice, then record the
+  // customer's payment against it so sales, cash and balances agree.
+  const deliveredInvoice = s.invoices.find(
+    (i) => i.orderId === "sample-delivered" && i.kind === "invoice",
+  );
+  if (deliveredInvoice) {
+    run("invoice-edit", {
+      ...deliveredInvoice,
+      invoiceId: deliveredInvoice.id,
+      billingAddress: "Northbank Studio, London SE1 (sample venue)",
+      supplyDate: today(),
+      issueDate: today(),
+      dueDate: today(),
+    });
+    run("invoice-issue", { invoiceId: deliveredInvoice.id });
+    run("invoice-payment", {
+      invoiceId: deliveredInvoice.id,
+      amount: deliveredInvoice.total,
+      reference: "SAMPLE-BACS-0001",
+      date: today(),
+    });
+  }
+  run("expense", {
+    service: "shared",
+    costType: "overhead",
     description: "Kitchen session · example",
+    amount: 8000,
+    vatRate: 0,
+    priceMode: "inclusive",
+    vatRecoverable: false,
+    incurredDate: today(),
+    paymentDate: today(),
+    status: "actual",
+  });
+  run("expense", {
+    orderId: "sample-delivered",
+    service: "corporate",
+    costType: "labour",
+    description: "Chef assistant, 4 hours · example",
+    amount: 6000,
+    vatRate: 0,
+    priceMode: "inclusive",
+    vatRecoverable: false,
+    incurredDate: today(),
+    paymentDate: today(),
+    status: "actual",
+    hours: 4,
+  });
+  run("journey", {
+    orderId: "sample-delivered",
+    service: "corporate",
     date: today(),
-    orderId: "",
+    miles: 6.4,
+    minutes: 38,
+    fuelCost: 140,
+    extraCost: 600,
+    status: "actual",
+    notes: "Round trip to Northbank Studio with loading bay parking · example",
+    paymentDate: today(),
   });
   run("feedback", {
     customerId: s.orders[0].customerId,

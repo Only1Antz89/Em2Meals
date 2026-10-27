@@ -167,6 +167,7 @@ type MapData = {
   building?: BuildingDetails | null;
   streetRules?: StreetRule[];
   mapError?: string;
+  parkingError?: string;
 };
 
 const clock = (minutesOfDay: number) => {
@@ -269,7 +270,9 @@ function ParkingCard({
   focus,
   onFocus,
   hasPlace,
+  error,
 }: {
+  error?: string;
   parking: MapPoint[];
   rules: StreetRule[];
   focus: number | null;
@@ -321,7 +324,7 @@ function ParkingCard({
           </ul>
         </>
       ) : (
-        <p className="venue-overlay-note">No public car parks mapped within a 15 minute walk.</p>
+        <p className="venue-overlay-note">{error || "No public car parks mapped within a 15 minute walk."}</p>
       )}
       {rules.length ? (
         <div className="venue-kerb">
@@ -542,7 +545,10 @@ export function VenueMode({
                 type="button"
                 aria-label="Refresh research"
                 disabled={!!busy || !integrations.gemini}
-                onClick={() => (target.kind === "order" ? void researchOrder(target.id, true) : void load(true))}
+                onClick={() =>
+                  // For an order, also reload the map, in case a map lookup failed.
+                  target.kind === "order" ? void Promise.all([researchOrder(target.id, true), load()]) : void load(true)
+                }
               >
                 <RefreshCw size={14} className={busy ? "animate-spin" : ""} />
               </button>
@@ -587,7 +593,14 @@ export function VenueMode({
                 </p>
               ) : null}
               <JourneyCard data={map} order={order} />
-              <ParkingCard parking={map.parking} rules={map.streetRules || []} focus={focus} onFocus={setFocus} hasPlace={!!map.place} />
+              <ParkingCard
+                parking={map.parking}
+                rules={map.streetRules || []}
+                focus={focus}
+                onFocus={setFocus}
+                hasPlace={!!map.place}
+                error={map.parkingError}
+              />
               <BuildingCard b={map.building} />
               {target.kind === "order" ? (
                 order?.venueResearch && venueResearched(order) ? (

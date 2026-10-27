@@ -186,25 +186,46 @@ export function carParkNotes(t: Record<string, string>): string[] {
   return notes;
 }
 
-async function overpass(query: string, what: string) {
-  const base = config().OSM_OVERPASS_BASE || "https://overpass-api.de/api";
-  const r = await fetch(`${base}/interpreter`, {
-    method: "POST",
-    headers: { "User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded" },
-    body: `data=${encodeURIComponent(query)}`,
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!r.ok) throw Error(`${what} failed (HTTP ${r.status})`);
-  return (await r.json()) as {
-    elements?: {
-      type: string;
-      lat?: number;
-      lon?: number;
-      center?: { lat: number; lon: number };
-      geometry?: { lat: number; lon: number }[];
-      tags?: Record<string, string>;
-    }[];
-  };
+// Public Overpass servers. The main one is often busy and answers 429 or
+// 502/504, so each query moves on to the next server when that happens.
+const OVERPASS_SERVERS = [
+  "https://overpass-api.de/api",
+  "https://overpass.private.coffee/api",
+  "https://maps.mail.ru/osm/tools/overpass/api",
+];
+
+type OverpassResult = {
+  elements?: {
+    type: string;
+    lat?: number;
+    lon?: number;
+    center?: { lat: number; lon: number };
+    geometry?: { lat: number; lon: number }[];
+    tags?: Record<string, string>;
+  }[];
+};
+
+export async function overpass(query: string, what: string): Promise<OverpassResult> {
+  const configured = config().OSM_OVERPASS_BASE;
+  const servers = configured ? [configured] : OVERPASS_SERVERS;
+  let last = "";
+  for (const base of servers) {
+    try {
+      const r = await fetch(`${base}/interpreter`, {
+        method: "POST",
+        headers: { "User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(12000),
+      });
+      if (r.ok) return (await r.json()) as OverpassResult;
+      last = `HTTP ${r.status}`;
+      // Only a busy or broken server is worth retrying elsewhere.
+      if (r.status !== 429 && r.status < 500) break;
+    } catch (e) {
+      last = e instanceof Error ? e.message : "no response";
+    }
+  }
+  throw Error(`${what} failed (${last})`);
 }
 
 // Public car parks within walking distance (about 800 m as the crow flies),
@@ -362,12 +383,14 @@ export async function venueMap(queries: string[], known?: MapPoint | null) {
     mapError = "The map service could not be reached.";
   }
   let parking: MapPoint[] = [];
+  let parkingError = "";
   if (place)
     parking = await nearbyParking(place).catch((e) => {
-      console.error("Car park search failed", e);
+      console.warn("Car park search failed", e);
+      parkingError = "The car park map is busy right now. Refresh in a minute to try again.";
       return [];
     });
-  return { place, parking, mapError };
+  return { place, parking, mapError, parkingError };
 }
 
 // Full research for a venue typed into AutoSous (not linked to an order).
@@ -509,16 +532,10 @@ export async function buildingDetails(point: MapPoint): Promise<BuildingDetails 
   const lat = Math.round(point.latitude * 100000) / 100000;
   const lon = Math.round(point.longitude * 100000) / 100000;
   return cached(`building:${lat},${lon}`, 30, async () => {
-    const base = config().OSM_OVERPASS_BASE || "https://overpass-api.de/api";
-    const query = `[out:json][timeout:10];(way(around:35,${lat},${lon})[building];relation(around:35,${lat},${lon})[building];);out tags center 3;node(around:70,${lat},${lon})[entrance];out tags 20;`;
-    const r = await fetch(`${base}/interpreter`, {
-      method: "POST",
-      headers: { "User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded" },
-      body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!r.ok) throw Error(`Building search failed (HTTP ${r.status})`);
-    const j = (await r.json()) as { elements?: { type: string; tags?: Record<string, string> }[] };
+    const j = await overpass(
+      `[out:json][timeout:10];(way(around:35,${lat},${lon})[building];relation(around:35,${lat},${lon})[building];);out tags center 3;node(around:70,${lat},${lon})[entrance];out tags 20;`,
+      "Building search",
+    );
     const elements = j.elements || [];
     const entrances = elements.filter((e) => e.type === "node" && e.tags?.entrance);
     const buildings = elements.filter((e) => e.type !== "node" && e.tags?.building);
@@ -551,10 +568,17 @@ export async function buildingDetails(point: MapPoint): Promise<BuildingDetails 
 export async function venueContext(kitchen: string | undefined, place: MapPoint | null) {
   if (!place) return { base: null, journey: null, building: null, streetRules: [] as StreetRule[] };
   const base = kitchen ? await geocode(kitchen).catch(() => null) : null;
-  const [journey, building, kerb] = await Promise.all([
+  // Overpass servers allow only a couple of queries at once from one
+  // address, so the building and street lookups run one after the other,
+  // alongside the route.
+  const osm = async () => {
+    const building = await buildingDetails(place).catch((e) => (console.warn("Building search failed", e), null));
+    const kerb = await streetRules(place).catch((e) => (console.warn("Street parking search failed", e), [] as StreetRule[]));
+    return [building, kerb] as const;
+  };
+  const [journey, [building, kerb]] = await Promise.all([
     base ? drivingRoute(base, place).catch((e) => (console.error("Route failed", e), null)) : null,
-    buildingDetails(place).catch((e) => (console.error("Building search failed", e), null)),
-    streetRules(place).catch((e) => (console.error("Street parking search failed", e), [] as StreetRule[])),
+    osm(),
   ]);
   return { base, journey, building, streetRules: kerb };
 }

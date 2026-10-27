@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Footer, Header } from "../public-shell";
@@ -10,11 +11,11 @@ import { PrintMenuButton } from "./print-button";
 // next visit without a redeploy.
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Seasonal Menu | Fork Goodness Baked",
-  description:
-    "Our current seasonal menu for private dining and corporate catering in London and the South East.",
-};
+export const metadata: Metadata = pageMetadata(
+  "/menu",
+  "Seasonal Menu | Fork Goodness Baked",
+  "Our current seasonal menu for private dining and corporate catering in London and the South East.",
+);
 
 async function publishedMenu() {
   try {

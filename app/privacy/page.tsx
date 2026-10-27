@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site";
 import { Header, Footer } from "../public-shell";
 
-export const metadata: Metadata = {
-  title: "Privacy | Fork Goodness Baked",
-  description:
-    "How Fork Goodness Baked collects, uses and protects the information you share in an enquiry, and how to ask for it to be corrected or erased.",
-};
+export const metadata: Metadata = pageMetadata(
+  "/privacy",
+  "Privacy | Fork Goodness Baked",
+  "How Fork Goodness Baked collects, uses and protects the information you share in an enquiry, and how to ask for it to be corrected or erased.",
+);
 
 export default function Page() {
   return (

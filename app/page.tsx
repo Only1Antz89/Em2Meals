@@ -1,8 +1,16 @@
+import type { Metadata } from "next";
 import Image from "next/image";
+import { pageMetadata } from "@/lib/site";
 import Link from "next/link";
 import { ArrowUpRight, MapPin } from "lucide-react";
 import { BrandMark, Footer, Header } from "./public-shell";
 import { HeroAtmosphere } from "./hero-atmosphere";
+
+export const metadata: Metadata = pageMetadata(
+  "/",
+  "Fork Goodness Baked | Private dining & corporate catering",
+  "Artisanal goodness for meaningful occasions and productive days, through private dining and thoughtful corporate catering.",
+);
 
 export default function Home() {
   return (

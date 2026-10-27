@@ -4026,7 +4026,7 @@ h2,
 }
 
 @media (max-width: 900px) {
-  .footer-lead {
+  .site-footer .footer-lead {
     grid-template-columns: 1fr 1.7fr;
   }
 

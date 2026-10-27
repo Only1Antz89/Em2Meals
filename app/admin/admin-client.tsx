@@ -775,7 +775,7 @@ export default function Admin({
             )}
           </SidebarFooter>
         </Sidebar>
-        <SidebarInset>
+        <SidebarInset className="min-w-0">
           <header className="ops-topbar">
             <div>
               <SidebarTrigger />
@@ -807,7 +807,7 @@ export default function Admin({
               </Button>
             </div>
           </header>
-          <main className="ops-main">
+          <div className="ops-main">
             {mode === "sample" && (
               <div className="sample-banner">
                 Sample workspace — illustrative clients, prices and stock.
@@ -895,7 +895,7 @@ export default function Admin({
             ) : (
               <p>Page not found.</p>
             )}
-          </main>
+          </div>
         </SidebarInset>
         <AdminEditor edit={edit} onClose={() => setEdit(null)} run={run} />
       </SidebarProvider>

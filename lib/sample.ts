@@ -194,6 +194,7 @@ export function sampleState(): State {
       frozen: "",
       thawed: "",
       notes: "Illustrative label date; do not use as storage guidance.",
+      lot: `SAMPLE-${i.id.toUpperCase()}-${today().slice(2, 4)}${today().slice(5, 7)}`,
     });
   s.purchases.push(
     ...s.ingredients.map((ingredient, index) => ({

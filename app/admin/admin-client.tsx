@@ -56,16 +56,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IngredientName } from "./ingredient-name";
 import { Field, Pick, Notes } from "@/components/form-controls";
-import {
-  AutoSousFormattedAnswer,
-  AutoSousRateLimitAlert,
-  type AssistantResult,
-} from "./assistant-display";
-import {
-  VenueResearchDisplay,
-  type VenueResearchResult,
-} from "./venue-research-display";
 import { AutoSousIcon } from "./autosous-icon";
+import { AutoSousChat } from "./autosous-chat";
+import { AutoSousAvatar } from "./autosous-avatar";
 import { Brand } from "../public-shell";
 import {
   emptyState,
@@ -898,6 +891,7 @@ export default function Admin({
           </main>
         </SidebarInset>
         <AdminEditor edit={edit} onClose={() => setEdit(null)} run={run} />
+        {loaded ? <AutoSousAvatar /> : null}
       </SidebarProvider>
     </Context.Provider>
   );
@@ -1223,6 +1217,7 @@ export function stockEditor(
       },
       { key: "intake", label: "Intake date", type: "date" },
       { key: "expiry", label: "Supplier label expiry date", type: "date" },
+      { key: "lot", label: "Batch / lot code from the label" },
       {
         key: "dateType",
         label: "Date type",
@@ -1335,6 +1330,8 @@ function StorageExpiryRegister() {
     expirySort,
   });
   return (
+    <>
+    <RecallsPanel />
     <Panel title="Storage & expiry register">
       <InventoryFilterBar>
         <CategoryFilter value={category} />
@@ -1380,6 +1377,122 @@ function StorageExpiryRegister() {
         empty="No active stock matches these filters."
       />
       <StockHandlingNote />
+    </Panel>
+    </>
+  );
+}
+
+function RecallsPanel() {
+  const { s, open, run, busy } = useOps();
+  const [error, setError] = useState("");
+  const recalls = (s.recalls || []).toSorted((a, b) => b.at.localeCompare(a.at));
+  const report = () =>
+    open({
+      title: "Report a recall or contamination notice",
+      action: "stock-recall",
+      values: { source: "supplier", ingredientId: "", supplierId: "", reference: "" },
+      fields: [
+        { key: "lot", label: "Batch / lot code on the notice", required: true },
+        {
+          key: "ingredientId",
+          label: "Ingredient (optional)",
+          options: [
+            { value: "", label: "Any ingredient with this lot code" },
+            ...s.ingredients.map((i) => ({ value: i.id, label: i.name })),
+          ],
+        },
+        {
+          key: "supplierId",
+          label: "Supplier (optional)",
+          options: [
+            { value: "", label: "Any supplier" },
+            ...s.suppliers.map((x) => ({ value: x.id, label: x.name })),
+          ],
+        },
+        {
+          key: "source",
+          label: "Notice from",
+          options: [
+            { value: "supplier", label: "Supplier" },
+            { value: "food-safety-alert", label: "Food Standards Agency alert" },
+            { value: "owner", label: "Our own check" },
+          ],
+        },
+        { key: "reference", label: "Notice reference (optional)" },
+        { key: "reason", label: "What is wrong (e.g. bird flu, Listeria)", type: "textarea", required: true },
+      ],
+      transform: (v) => ({
+        ...v,
+        ingredientId: v.ingredientId || undefined,
+        supplierId: v.supplierId || undefined,
+      }),
+    });
+  const close = async (type: "recall-dispose" | "recall-release", recallId: string) => {
+    setError("");
+    try {
+      await run(type, { recallId, note: "" });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <Panel
+      title="Recalls & contamination"
+      action={<Add onClick={report}>Report a recall</Add>}
+    >
+      {error ? (
+        <p role="alert" className="error-message">
+          {error}
+        </p>
+      ) : null}
+      <GridTable
+        heads={["Reported", "Lot", "Reason", "Stock on hold", "Orders affected", "Status", ""]}
+        rows={recalls.map((r) => {
+          const held = s.batches.filter((b) => r.batchIds.includes(b.id) && b.quarantined?.recallId === r.id);
+          return [
+            new Date(r.at).toLocaleDateString("en-GB"),
+            <span key="lot">
+              <b>{r.lot}</b>
+              <small className="subtext">
+                {r.ingredientId ? s.ingredients.find((i) => i.id === r.ingredientId)?.name : "Any ingredient"}
+                {r.reference ? ` · ${r.reference}` : ""}
+              </small>
+            </span>,
+            r.reason,
+            held.length
+              ? held
+                  .map((b) => `${Math.round(b.quantity * 100) / 100} ${s.ingredients.find((i) => i.id === b.ingredientId)?.unit || ""} ${s.ingredients.find((i) => i.id === b.ingredientId)?.name || ""}`)
+                  .join(", ")
+              : r.batchIds.length
+                ? "None left on hold"
+                : "No matching stock",
+            r.orderIds.length
+              ? r.orderIds.map((id) => s.orders.find((o) => o.id === id)?.reference).filter(Boolean).join(", ")
+              : "None",
+            <Tag key="status" tone={r.status === "open" ? "red" : r.status === "disposed" ? "" : "green"}>
+              {r.status === "open" ? "On hold" : r.status === "disposed" ? "Disposed" : "Released"}
+            </Tag>,
+            r.status === "open" ? (
+              <span key="actions" className="recall-actions">
+                <Button size="sm" disabled={busy} onClick={() => void close("recall-dispose", r.id)}>
+                  Dispose of stock
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => void close("recall-release", r.id)}>
+                  Not affected
+                </Button>
+              </span>
+            ) : (
+              ""
+            ),
+          ];
+        })}
+        empty="No recalls recorded. When a supplier or the FSA reports a bad batch, enter its lot code here to put matching stock on hold."
+      />
+      <p className="panel-note">
+        Stock with a matching lot code is put on hold straight away, so it is no
+        longer used for orders. Orders that already used it are listed so you
+        can contact the customer. Disposing records the stock removal.
+      </p>
     </Panel>
   );
 }
@@ -1489,8 +1602,12 @@ function BatchName({
         <IngredientName id={batch.ingredientId} name={name} />
       </b>
       <small className="subtext">
-        {batch.id.slice(0, 8)} · received {batch.intake}
+        {batch.lot ? `Lot ${batch.lot}` : batch.id.slice(0, 8)} · received{" "}
+        {batch.intake}
       </small>
+      {batch.quarantined ? (
+        <Tag tone="red">On hold: recall</Tag>
+      ) : null}
     </span>
   );
 }
@@ -1527,6 +1644,7 @@ function UpdateBatchButton({ batch }: { batch: State["batches"][number] }) {
               label: "Verified expiry date",
               type: "date",
             },
+            { key: "lot", label: "Batch / lot code" },
             { key: "opened", label: "Opened date", type: "date" },
             { key: "frozen", label: "Frozen date", type: "date" },
             { key: "thawed", label: "Thawed date", type: "date" },
@@ -2061,186 +2179,17 @@ function SettingsPage() {
   );
 }
 function Assistant() {
-  const { api, s, integrations, busy } = useOps();
-  const [question, setQuestion] = useState(""),
-    [lastQuestion, setLastQuestion] = useState(""),
-    [result, setResult] = useState<AssistantResult | null>(null),
-    [error, setError] = useState(""),
-    [venue, setVenue] = useState(""),
-    [venueResult, setVenueResult] = useState<VenueResearchResult | null>(null),
-    [venueError, setVenueError] = useState(""),
-    [venueBusy, setVenueBusy] = useState(false),
-    [lastVenueOrder, setLastVenueOrder] = useState<Order | null>(null);
-
-  const runQuery = async (queryText: string) => {
-    const trimmed = queryText.trim();
-    if (!trimmed) return;
-    setError("");
-    try {
-      const res = await api<AssistantResult>("assistant", { question: trimmed });
-      setResult(res);
-      setLastQuestion(trimmed);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const runVenueResearch = async (venueOrderId: string) => {
-    if (!venueOrderId) return;
-    setVenueError("");
-    setVenueBusy(true);
-    const selectedOrder = s.orders.find((o) => o.id === venueOrderId);
-    setLastVenueOrder(selectedOrder || null);
-    try {
-      const label = selectedOrder
-        ? `Venue Research: ${selectedOrder.details.venue} (${selectedOrder.reference})`
-        : "Research venue";
-      const res = await api<VenueResearchResult>("assistant", {
-        question: label,
-        venueOrderId,
-      });
-      setVenueResult(res);
-    } catch (e) {
-      setVenueError((e as Error).message);
-    } finally {
-      setVenueBusy(false);
-    }
-  };
-
+  const { integrations } = useOps();
   return (
-    <>
-      <Panel
-        title="Your kitchen, in the know"
-        action={
-          <Tag tone={integrations.gemini ? "green" : "amber"}>
-            {integrations.gemini
-              ? "AutoSous ready"
-              : "AutoSous setup required"}
-          </Tag>
-        }
-      >
-        <div className="assistant-intro">
-          <AutoSousIcon size={36} />
-          <h2>What’s needed for the next occasion?</h2>
-          <p>
-            Ask about orders, ingredient requirements, stock shortages or saved
-            delivery estimates. Suggestions stay separate from your records.
-          </p>
-          <div className="suggestions">
-            {[
-              "Which orders need attention?",
-              "What ingredients are needed for upcoming orders?",
-              "What stock should I restock?",
-            ].map((q) => (
-              <Button
-                key={q}
-                variant="outline"
-                disabled={busy}
-                onClick={() => {
-                  setQuestion(q);
-                  runQuery(q);
-                }}
-              >
-                {q}
-              </Button>
-            ))}
-          </div>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              await runQuery(question);
-            }}
-          >
-            <Notes
-              label="Ask the kitchen assistant"
-              value={question}
-              onChange={setQuestion}
-            />
-            <Button
-              disabled={busy || !question.trim()}
-              className="mt-4"
-            >
-              {busy ? "Looking into it…" : "Ask AutoSous"}
-              <ArrowRight size={16} />
-            </Button>
-          </form>
-        </div>
-        {error && (
-          <AutoSousRateLimitAlert
-            error={error}
-            busy={busy}
-            onRetry={() => runQuery(question || lastQuestion)}
-          />
-        )}
-        {result && (
-          <AutoSousFormattedAnswer
-            result={result}
-            question={lastQuestion}
-          />
-        )}
-      </Panel>
-      <Panel title="Public venue research">
-        <div className="report-controls">
-          <Pick
-            label="Order venue"
-            value={venue}
-            onChange={setVenue}
-            options={s.orders.map((o) => ({
-              value: o.id,
-              label: `${o.reference} · ${o.details.venue}`,
-            }))}
-          />
-          <Button
-            disabled={!venue || busy || venueBusy}
-            onClick={() => runVenueResearch(venue)}
-          >
-            {venueBusy ? (
-              <>
-                <RefreshCw size={14} className="animate-spin" />
-                <span>Researching…</span>
-              </>
-            ) : (
-              <>
-                <span>Research venue</span>
-                <ArrowRight size={16} />
-              </>
-            )}
-          </Button>
-        </div>
-        <p className="panel-note">
-          Public sources may be incomplete or outdated. Confirm accessibility,
-          loading and permits directly with the venue.
-        </p>
-
-        {venueBusy && (
-          <div className="venue-research-loading">
-            <RefreshCw size={18} className="animate-spin text-amber-600 flex-shrink-0" />
-            <div className="venue-loading-text">
-              <strong>Conducting public venue reconnaissance…</strong>
-              <p>Scanning online records for entrance access, loading bays, and parking regulations.</p>
-            </div>
-          </div>
-        )}
-
-        {venueError && (
-          <AutoSousRateLimitAlert
-            error={venueError}
-            busy={venueBusy}
-            onRetry={() => runVenueResearch(venue)}
-          />
-        )}
-
-        {venueResult && !venueBusy && (
-          <div className="venue-research-container">
-            <VenueResearchDisplay
-              result={venueResult}
-              order={lastVenueOrder || s.orders.find((o) => o.id === venue)}
-              onRefresh={() => runVenueResearch(venue)}
-              busy={venueBusy}
-            />
-          </div>
-        )}
-      </Panel>
-    </>
+    <Panel
+      title="Your kitchen, in the know"
+      action={
+        <Tag tone={integrations.gemini ? "green" : "amber"}>
+          {integrations.gemini ? "AutoSous ready" : "AutoSous setup required"}
+        </Tag>
+      }
+    >
+      <AutoSousChat />
+    </Panel>
   );
 }

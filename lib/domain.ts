@@ -5,6 +5,7 @@ import {
   industries,
 } from "./reporting";
 import { z } from "zod";
+import { recallCommand } from "./recalls";
 import { type Menu, menuCommand } from "./menu";
 import { privacyCommand } from "./privacy";
 import {
@@ -208,6 +209,38 @@ export type Order = {
   };
   analysis?: OrderAnalysis | null;
 };
+export type Recall = {
+  id: string;
+  at: string;
+  source: "supplier" | "food-safety-alert" | "owner";
+  reference: string;
+  reason: string;
+  lot: string;
+  ingredientId?: string;
+  supplierId?: string;
+  batchIds: string[];
+  // Orders that had stock from these batches reserved or already used.
+  orderIds: string[];
+  status: "open" | "disposed" | "released";
+  closedAt?: string;
+  closedNote?: string;
+};
+// A batch can be allocated to an order only with a valid label date that
+// covers the event, and only while it is not held by a recall.
+export function eligibleBatch(
+  b: { expiry: string; quarantined?: unknown },
+  eventDate?: string,
+) {
+  const day = today();
+  return (
+    !!b.expiry &&
+    !b.quarantined &&
+    b.expiry >= day &&
+    b.expiry >= (eventDate || day)
+  );
+}
+export const sameLot = (a: string | undefined, b: string) =>
+  !!a && a.trim().replace(/\s+/g, "").toUpperCase() === b.trim().replace(/\s+/g, "").toUpperCase();
 export type State = OperationsState & {
   journeys: Journey[];
   menus: Menu[];
@@ -254,7 +287,13 @@ export type State = OperationsState & {
     thawed: string;
     notes: string;
     unitCost: number;
+    // Supplier batch / lot code from the label, used to trace recalls.
+    lot?: string;
+    supplierId?: string;
+    // Set while a recall is open: the batch cannot be allocated or used.
+    quarantined?: { recallId: string; at: string; reason: string };
   }[];
+  recalls: Recall[];
   movements: {
     cost?: number;
     id: string;
@@ -393,6 +432,7 @@ export function emptyState(): State {
     customers: [],
     orders: [],
     batches: [],
+    recalls: [],
     movements: [],
     suppliers: [],
     purchases: [],
@@ -578,6 +618,7 @@ export function ingredientAvailable(s: State, ingredientId: string) {
     .filter(
       (batch) =>
         batch.ingredientId === ingredientId &&
+        !batch.quarantined &&
         (!batch.expiry || batch.expiry >= today()),
     )
     .reduce((sum, batch) => sum + Math.max(0, available(s, batch.id)), 0);
@@ -625,10 +666,7 @@ export function reserve(s: State, o: Order) {
     for (const b of s.batches
       .filter(
         (b) =>
-          b.ingredientId === ingredientId &&
-          b.expiry &&
-          b.expiry >= (o.details.date || today()) &&
-          b.expiry >= today(),
+          b.ingredientId === ingredientId && eligibleBatch(b, o.details.date),
       )
       .sort((a, b) => a.expiry.localeCompare(b.expiry))) {
       const take = Math.min(remaining, Math.max(0, available(s, b.id, o.id)));
@@ -672,7 +710,7 @@ export function alerts(s: State) {
   const a: { title: string; detail: string; href: string }[] = [];
   for (const i of s.ingredients) {
     const stock = s.batches
-      .filter((b) => b.ingredientId === i.id && b.expiry && b.expiry >= today())
+      .filter((b) => b.ingredientId === i.id && eligibleBatch(b))
       .reduce((v, b) => v + Math.max(0, available(s, b.id)), 0);
     if (stock <= i.threshold)
       a.push({
@@ -1290,8 +1328,12 @@ export function applyCommand(
           thawed: maybeDate,
           notes: long,
           purchaseId: short.optional(),
+          lot: short.optional(),
+          supplierId: short.optional(),
         })
         .parse(p);
+      if (v.supplierId && !s.suppliers.some((x) => x.id === v.supplierId))
+        throw Error("Supplier not found");
       const i = s.ingredients.find((x) => x.id === v.ingredientId);
       if (!i) throw Error("Ingredient not found");
       if (v.expiry && v.expiry < v.intake)
@@ -1300,8 +1342,13 @@ export function applyCommand(
       const purchase = v.purchaseId
         ? s.purchases.find((po) => po.id === v.purchaseId)
         : undefined;
+      const lot = v.lot?.trim() || undefined;
+      const supplierId =
+        v.supplierId || purchase?.supplierId || i.supplierId || undefined;
       s.batches.push({
         ...v,
+        lot,
+        supplierId,
         id,
         unitCost: purchase
           ? purchase.cost / purchase.quantity
@@ -1342,10 +1389,12 @@ export function applyCommand(
           opened: maybeDate,
           frozen: maybeDate,
           thawed: maybeDate,
+          lot: short.optional(),
         })
         .parse(p);
       const b = s.batches.find((x) => x.id === v.batchId);
       if (!b) throw Error("Batch not found");
+      if (v.lot !== undefined) v.lot = v.lot.trim() || undefined;
       const delta = v.quantity - b.quantity;
       Object.assign(b, v);
       s.movements.push({
@@ -1676,6 +1725,7 @@ export function applyCommand(
       const result =
         applyOperations(s, command.type, p, at) ??
         menuCommand(s, command.type, p, at) ??
+        recallCommand(s, command.type, p, at) ??
         privacyCommand(s, command.type, p, at) ??
         reportingCommand(s, command.type, p);
       if (result === undefined) throw Error("Unknown action");

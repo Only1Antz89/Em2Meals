@@ -26,6 +26,12 @@ export const config = () => {
     EMAIL_FROM: process.env.EMAIL_FROM,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GEMINI_MODEL: process.env.GEMINI_MODEL,
+    // Test hook: points AutoSous at a local stand-in for the Gemini API.
+    GEMINI_API_BASE: process.env.GEMINI_API_BASE,
+    // Optional: point map lookups at a different OpenStreetMap service.
+    OSM_GEOCODER_BASE: process.env.OSM_GEOCODER_BASE,
+    OSM_OVERPASS_BASE: process.env.OSM_OVERPASS_BASE,
+    OSM_ROUTER_BASE: process.env.OSM_ROUTER_BASE,
     GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
     OWNER_EMAILS: process.env.OWNER_EMAILS,
     OWNER_IDS: process.env.OWNER_IDS,
@@ -91,10 +97,23 @@ export async function loadState(mode = "live") {
   // Sample workspaces are disposable demonstrations. Refresh an older sample
   // snapshot as a unit so the v5 recipe imagery, stock, purchasing history and
   // costing examples stay internally consistent. Live data is only normalised.
-  const state =
-    id === "sample" && (!original.schemaVersion || original.schemaVersion < 5)
-      ? sampleState()
-      : normaliseState(original);
+  const refreshSample =
+    id === "sample" &&
+    (!original.schemaVersion ||
+      original.schemaVersion < 5 ||
+      // Samples made before batch lot codes and recalls existed.
+      !Array.isArray((original as Partial<State>).recalls));
+  const state = refreshSample ? sampleState() : normaliseState(original);
+  if (refreshSample) {
+    // Save the refreshed sample so record ids stay stable between loads.
+    const saved = await db
+      .prepare(
+        "UPDATE workspaces SET data=?,revision=?,updated_at=? WHERE id=? AND revision=?",
+      )
+      .bind(JSON.stringify(state), row.revision + 1, new Date().toISOString(), id, row.revision)
+      .run();
+    if (saved.meta.changes) row = { ...row, revision: row.revision + 1 };
+  }
   reconcileStock(state);
   assertStateIntegrity(state);
   if (id === "live" && state.drafts.length) {

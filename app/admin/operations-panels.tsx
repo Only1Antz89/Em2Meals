@@ -114,23 +114,44 @@ export function OrderStock({ order: o }: { order: Order }) {
     [reason, setReason] = useState(""),
     [error, setError] = useState("");
   const rows = shortage(s, o);
+  const reserved = (id: string) =>
+    o.reservations
+      .filter((r) => s.batches.find((b) => b.id === r.batchId)?.ingredientId === id)
+      .reduce((n, r) => n + r.quantity, 0);
+  const closed = ["cancelled", "declined", "delivered"].includes(o.status);
   return (
+    <div id="order-stock">
     <Panel
       title={
-        o.costSnapshot
-          ? "Stock impact & actual usage"
-          : "Stock impact if accepted"
+        o.consumed || closed
+          ? "Ingredients used"
+          : o.costSnapshot
+            ? "Ingredients & stock"
+            : "Ingredients & stock if accepted"
       }
       action={
-        <a href={`${href("business")}&tab=purchasing`}>
-          Purchasing & supplier drafts →
-        </a>
+        !closed && !o.consumed ? (
+          <a href={`${href("business")}&tab=purchasing`}>
+            Purchasing & supplier drafts →
+          </a>
+        ) : undefined
       }
     >
+      {o.consumed || closed ? (
+        <GridTable
+          heads={["Ingredient", "Quantity", "Stock"]}
+          rows={rows.map((l) => [
+            <IngredientName key="name" id={l.ingredientId} />,
+            `${+l.quantity.toFixed(2)} ${s.ingredients.find((i) => i.id === l.ingredientId)?.unit || ""}`,
+            o.consumed ? "Taken from stock" : "Not used (order closed)",
+          ])}
+        />
+      ) : (
       <GridTable
         heads={[
           "Ingredient",
           "Required",
+          ...(o.costSnapshot ? ["Reserved"] : []),
           "Available for this order",
           "Shortfall",
           "Supplier / ETA",
@@ -149,9 +170,14 @@ export function OrderStock({ order: o }: { order: Order }) {
           return [
             <IngredientName key="name" id={i.id} />,
             `${+l.quantity.toFixed(2)} ${i.unit}`,
+            ...(o.costSnapshot
+              ? [`${+reserved(i.id).toFixed(2)} ${i.unit}`]
+              : []),
             `${+l.available.toFixed(2)} ${i.unit}`,
             <Tag key="cell-3" tone={l.shortage > 0 ? "red" : "green"}>
-              {+l.shortage.toFixed(2)}
+              {l.shortage > 0
+                ? `${+l.shortage.toFixed(2)} ${i.unit} short`
+                : "Covered"}
             </Tag>,
             <span key="cell-4">
               {sup?.name || "Assign supplier"}
@@ -164,6 +190,7 @@ export function OrderStock({ order: o }: { order: Order }) {
           ];
         })}
       />
+      )}
       {!o.items.length && (
         <p className="panel-note">
           Confirm recipe matches and portions to calculate demand.
@@ -298,6 +325,7 @@ export function OrderStock({ order: o }: { order: Order }) {
         </form>
       )}
     </Panel>
+    </div>
   );
 }
 export function OrderVenue({ order: o }: { order: Order }) {

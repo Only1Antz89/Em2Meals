@@ -54,16 +54,24 @@ export function ReportControls({
   setFilter: (f: Partial<ReportFilter>) => void;
 }) {
   const { s } = useOps();
+  const presets = ["month", "last-month", "year", "twelve-months"];
+  // Show the preset that matches the chosen dates, so the menu reflects them.
+  const period =
+    presets.find((p) => {
+      const d = presetDates(p);
+      return d.from === filter.from && d.to === filter.to;
+    }) || "custom";
+  const wholeBusiness = !filter.customerId && filter.service === "all";
   return (
     <div className="analytics-controls">
       <Pick
         label="Reporting period"
-        value="custom"
+        value={period}
         onChange={(v) => {
           if (v !== "custom") setFilter(presetDates(v));
         }}
         options={[
-          { value: "custom", label: "Custom / selected dates" },
+          { value: "custom", label: "Custom dates" },
           { value: "month", label: "Month to date" },
           { value: "last-month", label: "Last month" },
           { value: "year", label: "Year to date" },
@@ -108,9 +116,15 @@ export function ReportControls({
       />
       <Button
         variant="outline"
+        disabled={wholeBusiness}
+        title={
+          wholeBusiness
+            ? "Already showing every customer and service"
+            : "Clear the customer and service filters"
+        }
         onClick={() => setFilter({ customerId: "", service: "all" })}
       >
-        Whole business
+        Show whole business
       </Button>
       {filter.customerId &&
         !s.customers.some((c) => c.id === filter.customerId) && (

@@ -24,6 +24,7 @@ const command = (s: State, type: string, payload: unknown) =>
 function fixture() {
   const s = sampleState();
   s.finance = [];
+  s.journeys = [];
   s.purchases = [];
   const first = s.orders[0];
   const customer = {
@@ -293,9 +294,11 @@ test("monthly chart data agree with report totals and empty periods avoid invali
 });
 test("invoice credits and partial payments use document and payment dates without duplicate income", () => {
   let s = sampleState();
-  const o = s.orders[0];
+  // The sample's delivered job is already invoiced and paid; use the
+  // upcoming order's draft and measure changes against that baseline.
+  const base = businessReport(s, filter());
   // Existing invoice commands provide immutable issue/payment snapshots.
-  const draft = s.invoices.find((x) => x.orderId === o.id)!;
+  const draft = s.invoices.find((x) => x.status === "draft")!;
   s = command(s, "invoice-edit", {
     ...draft,
     invoiceId: draft.id,
@@ -311,15 +314,18 @@ test("invoice credits and partial payments use document and payment dates withou
     reference: "partial",
   });
   const b = businessReport(s, filter());
-  assert.equal(b.salesNet, s.invoices.find((x) => x.id === draft.id)!.net);
+  assert.equal(
+    b.salesNet,
+    base.salesNet + s.invoices.find((x) => x.id === draft.id)!.net,
+  );
   assert.equal(
     b.unpaid,
-    s.invoices.find((x) => x.id === draft.id)!.total - 1000,
+    base.unpaid + s.invoices.find((x) => x.id === draft.id)!.total - 1000,
   );
   s = command(s, "invoice-credit", { invoiceId: draft.id });
   s = command(s, "invoice-issue", { invoiceId: s.invoices.at(-1)!.id });
-  assert.equal(businessReport(s, filter()).salesNet, 0);
-  assert.equal(businessReport(s, filter()).unpaid, 0);
+  assert.equal(businessReport(s, filter()).salesNet, base.salesNet);
+  assert.equal(businessReport(s, filter()).unpaid, base.unpaid);
   assert.equal(businessReport(s, filter()).cashIn, b.cashIn);
 });
 
@@ -412,4 +418,35 @@ test("order-linked stock losses affect only that service contribution", () => {
     before.segments.find((x) => x.service === "corporate")!.contribution,
   );
   assert.equal(after.netProfit, before.netProfit - 300);
+});
+test("sample workspace bills its delivered job so sales and cash agree", () => {
+  const s = sampleState();
+  const b = businessReport(s, filter());
+  assert.ok(b.salesGross > 0);
+  assert.equal(b.cashIn, b.salesGross);
+  assert.equal(b.unlinkedIncome, 0);
+  assert.equal(b.unpaid, 0);
+  assert.equal(b.warnings.unclassified, 0);
+  assert.equal(b.draftInvoices.length, 1);
+});
+test("a delivered job without an invoice can get a draft, once", () => {
+  let s = sampleState();
+  const o = s.orders.find(
+    (x) =>
+      x.status === "delivered" && !s.invoices.some((i) => i.orderId === x.id),
+  )!;
+  s = command(s, "invoice-create", { orderId: o.id });
+  const draft = s.invoices.find((i) => i.orderId === o.id)!;
+  assert.equal(draft.status, "draft");
+  assert.equal(draft.net, o.quotes.at(-1)!.net);
+  assert.doesNotMatch(draft.lines[0].description, /undefined/);
+  assert.throws(
+    () => command(s, "invoice-create", { orderId: o.id }),
+    /already has an invoice/,
+  );
+  const enquiry = s.orders.find((x) => x.status === "enquiry")!;
+  assert.throws(
+    () => command(s, "invoice-create", { orderId: enquiry.id }),
+    /Only accepted orders/,
+  );
 });

@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOps } from "./ops-context";
 import { Panel, GridTable, Tag, Drafts } from "./admin-client";
 import { Button } from "@/components/ui/button";
@@ -32,9 +32,21 @@ function proposalEmail(s: State, p: Proposal) {
       "\n",
     )}\n\nEstimated delivery charge: ${money(p.delivery)}. Estimated total: ${p.total === null ? "incomplete — pricing/VAT to confirm" : money(p.total)}. Please confirm prices, VAT and delivery dates. This request is not yet a confirmed purchase.\n\nThank you,\nFork Goodness Baked`;
 }
+// Fields HMRC-style invoices need before they can be issued.
+function missingForIssue(i: Invoice) {
+  return [
+    !i.businessName && "business name",
+    !i.businessAddress && "business address",
+    !i.billingAddress && "billing address",
+    !i.supplyDate && "supply date",
+    i.vat > 0 && !i.vatNumber && "VAT registration number",
+  ].filter(Boolean) as string[];
+}
 export default function Business({ tab }: { tab: string }) {
   const { s, run, open, href, busy } = useOps();
   const [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [invoiceNote, setInvoiceNote] = useState(""),
     [draft, setDraft] = useState<{
       proposal: Proposal;
       id?: string;
@@ -49,15 +61,54 @@ export default function Business({ tab }: { tab: string }) {
       eta: string;
       lines: { ingredientId: string; quantity: number; cost: string }[];
     } | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 8000);
+    return () => clearTimeout(timer);
+  }, [notice]);
   const buying = proposals(s),
     currentInvoice = s.invoices.find((i) => i.id === view);
-  async function action(type: string, p: unknown) {
+  async function action(type: string, p: unknown, done = "") {
     setError("");
+    setNotice("");
     try {
       await run(type, p);
+      if (done) setNotice(done);
     } catch (e) {
       setError((e as Error).message);
     }
+  }
+  // Open a draft for editing, filling blank business details from Settings.
+  function editInvoice(i: Invoice, note = "") {
+    const draft = structuredClone(i);
+    draft.businessName ||= s.settings.businessName || "";
+    draft.businessAddress ||= s.settings.businessAddress || "";
+    draft.vatNumber ||= s.settings.vatNumber || "";
+    draft.paymentInstructions ||= s.settings.paymentInstructions || "";
+    setInvoiceNote(note);
+    setInvoice(draft);
+  }
+  const balanceOf = (i: Invoice) =>
+    Math.max(
+      0,
+      i.total -
+        i.paid -
+        s.invoices
+          .filter((c) => c.originalId === i.id && c.status === "issued")
+          .reduce((n, c) => n + c.total, 0),
+    );
+  function invoiceStatus(i: Invoice): [string, string] {
+    if (i.status === "draft") return ["Draft · not issued", "amber"];
+    if (i.kind === "credit") return ["Credit note issued", ""];
+    const balance = balanceOf(i);
+    if (balance === 0) return [i.paid ? "Paid" : "Credited", "green"];
+    if (i.dueDate < today()) return [`Overdue · ${money(balance)} due`, "red"];
+    return [
+      i.paid
+        ? `Part paid · ${money(balance)} due`
+        : `Unpaid · due ${i.dueDate}`,
+      "",
+    ];
   }
   function prepare(p: Proposal, id?: string) {
     const sup = s.suppliers.find((x) => x.id === p.supplierId);
@@ -75,6 +126,11 @@ export default function Business({ tab }: { tab: string }) {
       {error && (
         <p role="alert" className="error-message">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="success-message">
+          {notice}
         </p>
       )}
       {tab === "purchasing" && (
@@ -305,22 +361,34 @@ export default function Business({ tab }: { tab: string }) {
         <>
           <Panel title="Invoices & credit notes">
             <GridTable
-              heads={[
-                "Document",
-                "Order",
-                "Status",
-                "Net",
-                "VAT",
-                "Total / paid",
-                "",
-              ]}
+              heads={["Document", "Order", "Status", "Total", "Paid", ""]}
+              empty="No invoices yet. Accepting a quote creates a draft invoice here."
               rows={s.invoices.map((i) => [
-                i.number || "Draft invoice",
-                s.orders.find((o) => o.id === i.orderId)?.reference,
-                i.status,
-                money(i.net),
-                money(i.vat),
-                `${money(i.total)} / ${money(i.paid)}`,
+                <span key="doc" className="invoice-status">
+                  {i.number ||
+                    (i.kind === "credit"
+                      ? "Draft credit note"
+                      : "Draft invoice")}
+                  <small className="subtext">
+                    {i.customer}
+                    {i.originalId
+                      ? ` · credits ${s.invoices.find((x) => x.id === i.originalId)?.number}`
+                      : ""}
+                  </small>
+                </span>,
+                <a key="order" href={href(`orders/${i.orderId}`)}>
+                  {s.orders.find((o) => o.id === i.orderId)?.reference}
+                </a>,
+                <Tag key="status" tone={`${invoiceStatus(i)[1]} plain`}>
+                  {invoiceStatus(i)[0]}
+                </Tag>,
+                <span key="total" className="invoice-status">
+                  <b>{money(i.total)}</b>
+                  <small className="subtext">
+                    {money(i.net)} + {money(i.vat)} VAT
+                  </small>
+                </span>,
+                i.kind === "credit" ? "—" : money(i.paid),
                 <div key="cell-6" className="inline-actions">
                   <Button
                     variant="outline"
@@ -334,16 +402,27 @@ export default function Business({ tab }: { tab: string }) {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => setInvoice(structuredClone(i))}
+                        onClick={() => editInvoice(i)}
                       >
                         Edit
                       </Button>
                       <Button
                         size="sm"
                         disabled={busy}
-                        onClick={() =>
-                          action("invoice-issue", { invoiceId: i.id })
-                        }
+                        onClick={() => {
+                          const missing = missingForIssue(i);
+                          if (missing.length)
+                            editInvoice(
+                              i,
+                              `Add the ${missing.join(", ")} and save, then issue the invoice.`,
+                            );
+                          else
+                            action(
+                              "invoice-issue",
+                              { invoiceId: i.id },
+                              "Invoice issued. Its prices and VAT are now locked.",
+                            );
+                        }}
                       >
                         Issue
                       </Button>
@@ -354,54 +433,68 @@ export default function Business({ tab }: { tab: string }) {
                         size="sm"
                         variant="outline"
                         onClick={() =>
-                          action("invoice-email", { invoiceId: i.id })
+                          action(
+                            "invoice-email",
+                            { invoiceId: i.id },
+                            "Email draft saved. Review and send it from Email drafts below.",
+                          )
                         }
                       >
                         Draft email
                       </Button>
-                      {i.kind === "invoice" && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              open({
-                                title: "Record invoice payment",
-                                action: "invoice-payment",
-                                values: { invoiceId: i.id, date: today() },
-                                fields: [
-                                  {
-                                    key: "amount",
-                                    label: "Payment (£)",
-                                    type: "money",
-                                  },
-                                  {
-                                    key: "reference",
-                                    label: "Unique payment reference",
-                                    required: true,
-                                  },
-                                  {
-                                    key: "date",
-                                    label: "Payment date",
-                                    type: "date",
-                                  },
-                                ],
-                              })
-                            }
-                          >
-                            Record payment
-                          </Button>
+                      {i.kind === "invoice" && balanceOf(i) > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setNotice("");
+                            open({
+                              title: "Record invoice payment",
+                              action: "invoice-payment",
+                              values: {
+                                invoiceId: i.id,
+                                date: today(),
+                                amount: balanceOf(i),
+                              },
+                              fields: [
+                                {
+                                  key: "amount",
+                                  label: "Payment (£)",
+                                  type: "money",
+                                },
+                                {
+                                  key: "reference",
+                                  label: "Unique payment reference",
+                                  required: true,
+                                },
+                                {
+                                  key: "date",
+                                  label: "Payment date",
+                                  type: "date",
+                                },
+                              ],
+                            });
+                          }}
+                        >
+                          Record payment
+                        </Button>
+                      )}
+                      {i.kind === "invoice" &&
+                        !s.invoices.some((c) => c.originalId === i.id) && (
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() =>
-                              action("invoice-credit", { invoiceId: i.id })
+                              action(
+                                "invoice-credit",
+                                { invoiceId: i.id },
+                                "Credit note drafted for the full amount. Edit it to the amount you're crediting, then issue it.",
+                              )
                             }
                           >
                             Credit note
                           </Button>
-                        </>
-                      )}
+                        )}
                     </>
                   )}
                 </div>,
@@ -570,14 +663,24 @@ export default function Business({ tab }: { tab: string }) {
           <DialogHeader>
             <DialogTitle>Edit invoice draft</DialogTitle>
             <DialogDescription>
-              Choose inclusive or exclusive price entry for each line.
+              Choose inclusive or exclusive price entry for each line. Blank
+              business details are filled from Settings.
             </DialogDescription>
           </DialogHeader>
+          {invoiceNote && (
+            <p role="alert" className="error-message">
+              {invoiceNote}
+            </p>
+          )}
           {invoice && (
             <InvoiceEditor
               invoice={invoice}
               onChange={setInvoice}
-              onSaved={() => setInvoice(null)}
+              onSaved={() => {
+                setInvoice(null);
+                setInvoiceNote("");
+                setNotice("Invoice draft saved.");
+              }}
             />
           )}
         </DialogContent>

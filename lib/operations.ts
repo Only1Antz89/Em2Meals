@@ -234,6 +234,8 @@ export type Usage = {
 };
 export type OperationsState = {
   schemaVersion: number;
+  /** Set only on generated sample workspaces; bump SAMPLE_VERSION to refresh them. */
+  sampleVersion?: number;
   offerings: Offering[];
   invoices: Invoice[];
   sequences: Record<string, number>;
@@ -635,7 +637,18 @@ export function invoiceDraft(s: State, o: Order, at: string) {
     number: "",
     lines: [
       {
-        description: `${o.details.eventType}: ${o.costSnapshot?.items.map((i) => `${i.name} × ${i.quantity}`).join(", ")}`,
+        description: `${o.details.eventType}: ${(
+          o.costSnapshot?.items ||
+          o.items.map((i) => {
+            const r = s.recipes.find((r) => r.id === i.recipeId);
+            return {
+              name: r ? `${r.name} · ${r.variant}` : "Catering",
+              quantity: i.quantity,
+            };
+          })
+        )
+          .map((i) => `${i.name} × ${i.quantity}`)
+          .join(", ")}`,
         quantity: 1,
         amount: q.priceMode === "inclusive" ? q.total : q.net,
         vatRate: q.vatRate,
@@ -888,6 +901,19 @@ export function applyOperations(
         });
       d.purchaseConfirmed = true;
       return d.id;
+    }
+    case "invoice-create": {
+      // For accepted or completed orders that never got an invoice draft,
+      // such as jobs recorded before invoicing was added.
+      const o = s.orders.find((o) => o.id === p.orderId);
+      if (!o) throw Error("Order not found");
+      if (["enquiry", "quote", "cancelled", "declined"].includes(o.status))
+        throw Error("Only accepted orders can be invoiced");
+      if (!o.quotes.length) throw Error("Prepare a quote before invoicing");
+      if (s.invoices.some((i) => i.orderId === o.id && i.kind === "invoice"))
+        throw Error("This order already has an invoice");
+      invoiceDraft(s, o, at);
+      return s.invoices.at(-1)!.id;
     }
     case "invoice-edit": {
       const v = z

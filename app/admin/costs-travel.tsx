@@ -184,6 +184,17 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
     (x) => matches(x) && inPeriod(x.incurredDate || x.date, f),
   );
   const journeys = s.journeys.filter((j) => matches(j) && inPeriod(j.date, f));
+  const legacy = finance.filter(
+    (x) => !x.invoiceId && !x.costType && !x.reconciliationNote && !x.excluded,
+  );
+  const sideLabel = (side?: string) =>
+    side === "shared"
+      ? "Shared business"
+      : side === "private"
+        ? "Private"
+        : side === "corporate"
+          ? "Corporate"
+          : "Unclassified";
   return (
     <>
       <Panel
@@ -196,7 +207,7 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
       >
         <GridTable
           heads={[
-            "Incurred / paid",
+            "Incurred",
             "Description",
             "Business side",
             "Type",
@@ -208,11 +219,26 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
           rows={finance
             .filter((x) => x.type === "expense")
             .map((x) => [
-              `${x.incurredDate || x.date} / ${(x.paymentDate ?? x.date) || "Unpaid"}`,
-              x.description,
-              s.orders.find((o) => o.id === x.orderId)?.details.service ||
-                x.service ||
-                "Unclassified",
+              <span key="date">
+                {x.incurredDate || x.date}
+                <small className="subtext">
+                  {(x.paymentDate ?? x.date)
+                    ? `Paid ${x.paymentDate ?? x.date}`
+                    : "Unpaid"}
+                </small>
+              </span>,
+              <span key="description">
+                {x.description}
+                {x.orderId && (
+                  <small className="subtext">
+                    {s.orders.find((o) => o.id === x.orderId)?.reference}
+                  </small>
+                )}
+              </span>,
+              sideLabel(
+                s.orders.find((o) => o.id === x.orderId)?.details.service ||
+                  x.service,
+              ),
               x.costType || x.category,
               money(x.amount),
               x.recoverableVAT === undefined
@@ -290,7 +316,7 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
               x.excluded
                 ? "Excluded"
                 : x.invoiceId
-                  ? s.invoices.find((i) => i.id === x.invoiceId)?.number
+                  ? `Paid against ${s.invoices.find((i) => i.id === x.invoiceId)?.number}`
                   : x.reconciliationNote || "Needs linking",
               !x.invoiceId && !x.excluded ? (
                 <Button
@@ -342,23 +368,16 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
             ])}
         />
       </Panel>
-      <Panel title="Unreconciled legacy entries">
-        <p className="panel-note">
-          These records still count as recorded cash. Their treatment in
-          profitability needs confirmation. Nothing is automatically linked or
-          classified.
-        </p>
-        <GridTable
-          heads={["Date", "Description", "Type", "Amount", ""]}
-          rows={finance
-            .filter(
-              (x) =>
-                !x.invoiceId &&
-                !x.costType &&
-                !x.reconciliationNote &&
-                !x.excluded,
-            )
-            .map((x) => [
+      {legacy.length > 0 && (
+        <Panel title="Unreconciled legacy entries">
+          <p className="panel-note">
+            These records still count as recorded cash. Their treatment in
+            profitability needs confirmation. Nothing is automatically linked or
+            classified.
+          </p>
+          <GridTable
+            heads={["Date", "Description", "Type", "Amount", ""]}
+            rows={legacy.map((x) => [
               x.date,
               x.description,
               x.type,
@@ -393,9 +412,10 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
                 </Button>
               </div>,
             ])}
-        />
-        <Tag>Audit history is retained</Tag>
-      </Panel>
+          />
+          <Tag>Audit history is retained</Tag>
+        </Panel>
+      )}
     </>
   );
 }

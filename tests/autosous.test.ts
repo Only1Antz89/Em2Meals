@@ -4,7 +4,7 @@ import { applyCommand, today, type State } from "../lib/domain";
 import { sampleState } from "../lib/sample";
 import { workspaceAlerts } from "../lib/autosous-alerts";
 import { kitchenBriefing } from "../lib/autosous-briefing";
-import { alertMatches, parseFeed } from "../lib/food-safety";
+import { alertMatches, parseAlerts, parseFeed } from "../lib/food-safety";
 import { carParkNotes, decodePolyline, kerbRule, withWalking } from "../lib/venue-research";
 
 const act = (s: State, type: string, payload: unknown) =>
@@ -213,4 +213,36 @@ test("kerb rules read both OpenStreetMap parking schemes", () => {
   assert.equal(kerbRule({ "parking:both:restriction": "loading_only" }, "both")?.tone, "loading");
   assert.equal(kerbRule({ "parking:both": "separate" }, "both"), null);
   assert.equal(kerbRule({ highway: "residential" }, "both"), null);
+});
+
+test("FSA alerts API items become safety alerts", () => {
+  const items = parseAlerts({
+    items: [
+      {
+        "@id": "http://data.food.gov.uk/food-alerts/id/FSA-AA-43-2026",
+        notation: "FSA-AA-43-2026",
+        title: "Pot Noodle recalls Piri Piri Chicken Flavour because of undeclared milk",
+        type: ["http://data.food.gov.uk/food-alerts/def/AA", "http://data.food.gov.uk/food-alerts/def/Alert"],
+        created: "2026-10-02",
+        modified: "2026-10-02T10:00:00+00:00",
+        alertURL: "https://www.food.gov.uk/news-alerts/alert/FSA-AA-43-2026",
+        problem: [{ riskStatement: "This product contains milk &amp; is a risk.", allergen: [{ label: "Milk" }] }],
+        productDetails: [{ productName: "Piri Piri Chicken Flavour" }],
+      },
+      {
+        notation: "FSA-PRIN-48-2026",
+        title: "Greencore recalls products because of Salmonella",
+        type: ["http://data.food.gov.uk/food-alerts/def/PRIN"],
+        created: "2026-10-08",
+        problem: { riskStatement: "Possible Salmonella." },
+      },
+      { title: "No link", alertURL: "http://insecure.example" },
+    ],
+  });
+  assert.equal(items.length, 2);
+  assert.equal(items[0].kind, "allergy");
+  assert.match(items[0].summary, /contains milk & is a risk\. Products: Piri Piri Chicken Flavour\. Allergens: Milk\./);
+  assert.equal(items[1].kind, "food");
+  assert.equal(items[1].url, "https://www.food.gov.uk/news-alerts/alert/FSA-PRIN-48-2026");
+  assert.equal(items[1].published, "2026-10-08T00:00:00.000Z");
 });

@@ -5,6 +5,7 @@ import { sampleState } from "../lib/sample";
 import { workspaceAlerts } from "../lib/autosous-alerts";
 import { kitchenBriefing } from "../lib/autosous-briefing";
 import { alertMatches, parseFeed } from "../lib/food-safety";
+import { decodePolyline } from "../lib/venue-research";
 
 const act = (s: State, type: string, payload: unknown) =>
   applyCommand(s, { id: crypto.randomUUID(), type, payload }, "test-owner");
@@ -171,4 +172,12 @@ test("the briefing groups services by day with the next job and their alerts", (
   assert.ok(b.prep && b.prep.dishes.length > 0);
   assert.ok(b.useFirst.some((l) => l.id === `use-${soon.id}`));
   assert.match(b.summary, /service/);
+});
+
+test("route lines decode from Google's polyline format", () => {
+  const path = decodePolyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@");
+  assert.deepEqual(
+    path.map(([lng, lat]) => [Math.round(lng * 1000) / 1000, Math.round(lat * 1000) / 1000]),
+    [[-120.2, 38.5], [-120.95, 40.7], [-126.453, 43.252]],
+  );
 });

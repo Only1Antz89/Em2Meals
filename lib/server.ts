@@ -31,6 +31,7 @@ export const config = () => {
     // Optional: point map lookups at a different OpenStreetMap service.
     OSM_GEOCODER_BASE: process.env.OSM_GEOCODER_BASE,
     OSM_OVERPASS_BASE: process.env.OSM_OVERPASS_BASE,
+    OSM_ROUTER_BASE: process.env.OSM_ROUTER_BASE,
     GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY,
     OWNER_EMAILS: process.env.OWNER_EMAILS,
     OWNER_IDS: process.env.OWNER_IDS,

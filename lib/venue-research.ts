@@ -50,6 +50,9 @@ export type VenueSearchResult = {
   sources: { title: string; url: string }[];
   place: MapPoint | null;
   parking: MapPoint[];
+  base?: MapPoint | null;
+  journey?: Journey | null;
+  building?: BuildingDetails | null;
 };
 
 const USER_AGENT = "Em2Meals/1.0 (catering venue planning)";
@@ -167,7 +170,7 @@ export async function venueMap(queries: string[], known?: MapPoint | null) {
 }
 
 // Full research for a venue typed into AutoSous (not linked to an order).
-export async function researchVenue(query: string, refresh = false): Promise<VenueSearchResult & { mapError?: string }> {
+export async function researchVenue(query: string, refresh = false, kitchen?: string): Promise<VenueSearchResult & { mapError?: string }> {
   const q = query.trim().slice(0, 300);
   const key = `venue-search:${q.toLowerCase()}`;
   if (refresh)
@@ -184,5 +187,172 @@ export async function researchVenue(query: string, refresh = false): Promise<Ven
     }),
     venueMap([q]),
   ]);
-  return { query: q, ...report, ...map };
+  return { query: q, ...report, ...map, ...(await venueContext(kitchen, map.place)) };
+}
+
+export type Journey = {
+  minutes: number;
+  miles: number;
+  // Journey time without traffic, when the routing service gives it.
+  typicalMinutes: number | null;
+  traffic: "light" | "moderate" | "heavy" | null;
+  // [longitude, latitude] pairs for drawing the route.
+  path: [number, number][];
+  source: string;
+  at: string;
+};
+export type BuildingDetails = {
+  name: string;
+  kind: string;
+  levels: number | null;
+  heightMetres: number | null;
+  wheelchair: string;
+  website: string;
+  openingHours: string;
+  entrances: number;
+  stepFreeEntrances: number;
+  serviceEntrances: number;
+};
+
+// Google's encoded polyline format, as returned by the Routes API.
+export function decodePolyline(encoded: string): [number, number][] {
+  const out: [number, number][] = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    for (const axis of [0, 1]) {
+      let result = 0, shift = 0, byte = 0;
+      do {
+        byte = encoded.charCodeAt(index++) - 63;
+        result |= (byte & 0x1f) << shift;
+        shift += 5;
+      } while (byte >= 0x20 && index < encoded.length);
+      const delta = result & 1 ? ~(result >> 1) : result >> 1;
+      if (axis === 0) lat += delta;
+      else lng += delta;
+    }
+    out.push([lng / 1e5, lat / 1e5]);
+  }
+  return out;
+}
+
+const trafficLevel = (minutes: number, typical: number | null): Journey["traffic"] => {
+  if (!typical || typical <= 0) return null;
+  const ratio = minutes / typical;
+  return ratio >= 1.35 ? "heavy" : ratio >= 1.12 ? "moderate" : "light";
+};
+
+// Driving route from the kitchen to the venue. With a Google Maps key this
+// uses live traffic (cached for ten minutes); otherwise OpenStreetMap
+// routing gives the typical drive time.
+export async function drivingRoute(from: MapPoint, to: MapPoint): Promise<Journey | null> {
+  const key = `route:${from.latitude.toFixed(4)},${from.longitude.toFixed(4)}>${to.latitude.toFixed(4)},${to.longitude.toFixed(4)}`;
+  if (config().GOOGLE_MAPS_API_KEY) {
+    return cached(`${key}:traffic:${Math.floor(Date.now() / 600000)}`, 1 / 144, async () => {
+      const { googleJSON } = await import("./integrations");
+      const r = await googleJSON<{
+        routes?: { duration: string; staticDuration?: string; distanceMeters: number; polyline?: { encodedPolyline: string } }[];
+      }>(
+        "https://routes.googleapis.com/directions/v2:computeRoutes",
+        {
+          origin: { location: { latLng: { latitude: from.latitude, longitude: from.longitude } } },
+          destination: { location: { latLng: { latitude: to.latitude, longitude: to.longitude } } },
+          travelMode: "DRIVE",
+          routingPreference: "TRAFFIC_AWARE",
+          languageCode: "en-GB",
+          units: "IMPERIAL",
+        },
+        { "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters,routes.polyline.encodedPolyline" },
+      );
+      const route = r.routes?.[0];
+      if (!route) return null;
+      const minutes = parseFloat(route.duration) / 60;
+      const typical = route.staticDuration ? parseFloat(route.staticDuration) / 60 : null;
+      return {
+        minutes,
+        miles: route.distanceMeters / 1609.344,
+        typicalMinutes: typical,
+        traffic: trafficLevel(minutes, typical),
+        path: route.polyline ? decodePolyline(route.polyline.encodedPolyline) : [],
+        source: "Google Maps, live traffic",
+        at: new Date().toISOString(),
+      };
+    });
+  }
+  return cached(`${key}:osm`, 7, async () => {
+    const base = config().OSM_ROUTER_BASE || "https://router.project-osrm.org";
+    const r = await fetch(
+      `${base}/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson`,
+      { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(10000) },
+    );
+    if (!r.ok) throw Error(`Route search failed (HTTP ${r.status})`);
+    const j = (await r.json()) as {
+      routes?: { duration: number; distance: number; geometry?: { coordinates: [number, number][] } }[];
+    };
+    const route = j.routes?.[0];
+    if (!route) return null;
+    return {
+      minutes: route.duration / 60,
+      miles: route.distance / 1609.344,
+      typicalMinutes: null,
+      traffic: null,
+      path: route.geometry?.coordinates || [],
+      source: "OpenStreetMap routing, typical traffic",
+      at: new Date().toISOString(),
+    };
+  });
+}
+
+// What OpenStreetMap knows about the building: floors, step-free access,
+// entrances (including service or delivery doors) and opening hours.
+export async function buildingDetails(point: MapPoint): Promise<BuildingDetails | null> {
+  const lat = Math.round(point.latitude * 100000) / 100000;
+  const lon = Math.round(point.longitude * 100000) / 100000;
+  return cached(`building:${lat},${lon}`, 30, async () => {
+    const base = config().OSM_OVERPASS_BASE || "https://overpass-api.de/api";
+    const query = `[out:json][timeout:10];(way(around:35,${lat},${lon})[building];relation(around:35,${lat},${lon})[building];);out tags center 3;node(around:70,${lat},${lon})[entrance];out tags 20;`;
+    const r = await fetch(`${base}/interpreter`, {
+      method: "POST",
+      headers: { "User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded" },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!r.ok) throw Error(`Building search failed (HTTP ${r.status})`);
+    const j = (await r.json()) as { elements?: { type: string; tags?: Record<string, string> }[] };
+    const elements = j.elements || [];
+    const entrances = elements.filter((e) => e.type === "node" && e.tags?.entrance);
+    const buildings = elements.filter((e) => e.type !== "node" && e.tags?.building);
+    // Prefer a named building, then the one with the most detail.
+    const b = [...buildings].sort(
+      (x, y) => Number(!!y.tags?.name) - Number(!!x.tags?.name) || Object.keys(y.tags || {}).length - Object.keys(x.tags || {}).length,
+    )[0]?.tags;
+    if (!b && !entrances.length) return null;
+    const num = (v?: string) => {
+      const n = parseFloat(v || "");
+      return Number.isFinite(n) ? n : null;
+    };
+    return {
+      name: b?.name || "",
+      kind: b?.building && b.building !== "yes" ? b.building.replace(/_/g, " ") : b?.amenity?.replace(/_/g, " ") || "",
+      levels: num(b?.["building:levels"]),
+      heightMetres: num(b?.height),
+      wheelchair: b?.wheelchair || "",
+      website: /^https:\/\//.test(b?.website || "") ? b!.website : "",
+      openingHours: b?.opening_hours || "",
+      entrances: entrances.length,
+      stepFreeEntrances: entrances.filter((e) => e.tags?.wheelchair === "yes").length,
+      serviceEntrances: entrances.filter((e) => /service|delivery|staff|garage/.test(e.tags?.entrance || "") || e.tags?.access === "delivery").length,
+    };
+  });
+}
+
+// The kitchen (the business base in Settings) on the map, the drive from it
+// and building details. Each part fails on its own without failing the rest.
+export async function venueContext(kitchen: string | undefined, place: MapPoint | null) {
+  if (!place) return { base: null, journey: null, building: null };
+  const base = kitchen ? await geocode(kitchen).catch(() => null) : null;
+  const [journey, building] = await Promise.all([
+    base ? drivingRoute(base, place).catch((e) => (console.error("Route failed", e), null)) : null,
+    buildingDetails(place).catch((e) => (console.error("Building search failed", e), null)),
+  ]);
+  return { base, journey, building };
 }

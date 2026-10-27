@@ -182,8 +182,8 @@ export function AutoSousChat() {
   };
 
   return (
-    <div className={`autosous-chat ${venue ? "is-venue" : ""}`}>
-      {venue ? (
+    <div className={`autosous-chat ${compose === "venue" ? "is-venue" : ""}`}>
+      {compose === "venue" ? (
         <VenueMode
           target={venue}
           onTarget={setVenue}

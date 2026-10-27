@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { owner, sameOrigin, jsonBody, errorResponse, loadState } from "@/lib/server";
 import { rateLimit } from "@/lib/upgrade-server";
-import { researchVenue, venueMap } from "@/lib/venue-research";
+import { geocode, researchVenue, venueContext, venueMap } from "@/lib/venue-research";
 
 // Venue mode on the AutoSous page.
 // - { query }: research any venue or address, with its map and car parks.
+// - { base: true }: where the kitchen is.
 // - { orderId }: map and car parks for an order's venue. The written research
 //   for orders is saved on the order by /api/admin/research.
 export async function POST(req: Request) {
@@ -17,9 +18,16 @@ export async function POST(req: Request) {
         query: z.string().trim().min(3, "Enter a venue name or address").max(300).optional(),
         orderId: z.string().max(200).optional(),
         refresh: z.boolean().optional(),
+        // Just the kitchen's location, for the map before a venue is chosen.
+        base: z.boolean().optional(),
       })
-      .refine((v) => v.query || v.orderId, "Enter a venue name or address")
+      .refine((v) => v.query || v.orderId || v.base, "Enter a venue name or address")
       .parse(await jsonBody(req));
+    if (p.base && !p.query && !p.orderId) {
+      const { state } = await loadState(p.mode);
+      const base = state.settings.kitchen ? await geocode(state.settings.kitchen).catch(() => null) : null;
+      return Response.json({ base });
+    }
     await rateLimit(req, "venue-search", 40);
     if (p.orderId) {
       const { state } = await loadState(p.mode);
@@ -50,9 +58,11 @@ export async function POST(req: Request) {
         longitude: c.longitude,
         url: c.mapUrl,
       }));
-      return Response.json({ ...map, parking: saved.length ? saved : map.parking });
+      const context = await venueContext(state.settings.kitchen, map.place);
+      return Response.json({ ...map, ...context, parking: saved.length ? saved : map.parking });
     }
-    return Response.json(await researchVenue(p.query!, p.refresh));
+    const { state } = await loadState(p.mode);
+    return Response.json(await researchVenue(p.query!, p.refresh, state.settings.kitchen));
   } catch (e) {
     const message = e instanceof Error ? e.message : "";
     return errorResponse(e, /rate limit/i.test(message) ? 429 : /unavailable|setup required/i.test(message) ? 503 : 400);

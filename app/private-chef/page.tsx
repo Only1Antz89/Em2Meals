@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight, Check } from "lucide-react";
 import { Footer, Header } from "../public-shell";
 
-export const metadata: Metadata = {
-  title: "Private Dining & Private Chef | Fork Goodness Baked",
-  description:
-    "A private chef experience shaped around your table, for dinners, celebrations and gatherings in London and the South East.",
-};
+export const metadata: Metadata = pageMetadata(
+  "/private-chef",
+  "Private Dining & Private Chef | Fork Goodness Baked",
+  "A private chef experience shaped around your table, for dinners, celebrations and gatherings in London and the South East.",
+);
 
 
 const occasions = [

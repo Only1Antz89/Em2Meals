@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Footer, Header } from "./public-shell";
+
+export const metadata: Metadata = {
+  title: "Page not found | Fork Goodness Baked",
+  robots: { index: false },
+};
 
 export default function NotFound() {
   return (

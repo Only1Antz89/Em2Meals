@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight, Check, HeartHandshake, Leaf, MapPin } from "lucide-react";
 import { Footer, Header } from "../public-shell";
 
-export const metadata: Metadata = {
-  title: "About Us | Fork Goodness Baked",
-  description:
-    "At Fork Goodness Baked we take pride in tailoring our food and service to meet client's needs. Serving London and the South East.",
-};
+export const metadata: Metadata = pageMetadata(
+  "/about",
+  "About Us | Fork Goodness Baked",
+  "At Fork Goodness Baked we take pride in tailoring our food and service to meet client's needs. Serving London and the South East.",
+);
 
 const values = [
   {

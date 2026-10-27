@@ -1,9 +1,12 @@
 // UK Food Standards Agency alerts (product recalls and allergy alerts).
 //
-// The two FSA RSS feeds are read at most twice a day and cached in the
-// research cache table, so opening the app never waits long on them. News is
-// shown as a weekly digest; an alert that names an ingredient in the
-// catalogue is raised straight away as a warning.
+// Alerts come from the FSA's open data API (data.food.gov.uk), which is made
+// for machines. The www.food.gov.uk RSS feeds are only a fallback: that site
+// turns away requests from servers, which is why the feed showed as
+// unreachable on the live site. Alerts are read at most twice a day and
+// cached in the research cache table, so opening the app never waits long on
+// them. News is shown as a weekly digest; an alert that names an ingredient
+// in the catalogue is raised straight away as a warning.
 import { database } from "./server";
 import type { State } from "./domain";
 
@@ -11,6 +14,10 @@ export const FOOD_SAFETY_FEEDS = [
   { kind: "food" as const, url: "https://www.food.gov.uk/rss-feed/alerts-food" },
   { kind: "allergy" as const, url: "https://www.food.gov.uk/rss-feed/alerts-allergy" },
 ];
+const ALERTS_API = process.env.FSA_ALERTS_API || "https://data.food.gov.uk/food-alerts/id";
+// How far back to read alerts.
+const ALERT_DAYS = 60;
+const USER_AGENT = "Em2Meals/1.0 (catering kitchen food safety alerts)";
 const CACHE_KEY = "autosous:food-safety-feeds";
 const CACHE_HOURS = 12;
 
@@ -72,6 +79,81 @@ export function parseFeed(xml: string, kind: FoodSafetyItem["kind"]): FoodSafety
   });
 }
 
+type ApiLabel = { label?: string } | string;
+type ApiAlert = {
+  "@id"?: string;
+  notation?: string;
+  title?: string;
+  shortTitle?: string;
+  type?: string[] | string;
+  created?: string;
+  modified?: string;
+  alertURL?: string;
+  problem?: { riskStatement?: string; allergen?: ApiLabel[] | ApiLabel }[] | { riskStatement?: string; allergen?: ApiLabel[] | ApiLabel };
+  productDetails?: { productName?: string }[] | { productName?: string };
+};
+const list = <T,>(v: T | T[] | undefined): T[] => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
+const label = (v: ApiLabel) => (typeof v === "string" ? v : v.label || "");
+
+// Reads the FSA food alerts API. Allergy alerts (AA) are "allergy"; product
+// recalls (PRIN) and action alerts (FAFA) are "food".
+export function parseAlerts(json: unknown): FoodSafetyItem[] {
+  const items = ((json as { items?: ApiAlert[] })?.items || []) as ApiAlert[];
+  return items.flatMap((a) => {
+    const url = a.alertURL || (a.notation ? `https://www.food.gov.uk/news-alerts/alert/${a.notation}` : "");
+    const title = (a.title || a.shortTitle || "").trim();
+    if (!title || !/^https:\/\//.test(url)) return [];
+    const types = list(a.type).map(String);
+    const problems = list(a.problem);
+    const allergens = [...new Set(problems.flatMap((p) => list(p.allergen).map(label)).filter(Boolean))];
+    const products = list(a.productDetails).map((p) => p.productName || "").filter(Boolean);
+    const summary = [
+      problems.map((p) => p.riskStatement || "").filter(Boolean).join(" "),
+      products.length ? `Products: ${products.slice(0, 6).join("; ")}.` : "",
+      allergens.length ? `Allergens: ${allergens.join(", ")}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const parsed = Date.parse(a.modified || a.created || "");
+    return [
+      {
+        id: a.notation || a["@id"] || url,
+        kind: types.some((t) => /\/AA$|^AA$/.test(t)) ? ("allergy" as const) : ("food" as const),
+        title: title.slice(0, 300),
+        summary: decode(summary).slice(0, 600),
+        url,
+        published: Number.isFinite(parsed) ? new Date(parsed).toISOString() : "",
+      },
+    ];
+  });
+}
+
+async function fromApi(now: Date): Promise<FoodSafetyItem[]> {
+  const since = new Date(now.getTime() - ALERT_DAYS * 86400000).toISOString().slice(0, 10);
+  const r = await fetch(`${ALERTS_API}?since=${since}&_limit=100`, {
+    headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!r.ok) throw Error(`FSA alerts API HTTP ${r.status}`);
+  return parseAlerts(await r.json());
+}
+
+async function fromRss(): Promise<FoodSafetyItem[]> {
+  const results = await Promise.allSettled(
+    FOOD_SAFETY_FEEDS.map(async (feed) => {
+      const r = await fetch(feed.url, {
+        headers: { Accept: "application/rss+xml, application/xml, text/xml", "User-Agent": USER_AGENT },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) throw Error(`HTTP ${r.status}`);
+      return parseFeed(await r.text(), feed.kind);
+    }),
+  );
+  const ok = results.filter((r) => r.status === "fulfilled");
+  if (!ok.length) throw Error(`FSA RSS feeds failed (${results.map((r) => (r.status === "rejected" ? String(r.reason?.message || r.reason) : "")).join(", ")})`);
+  return ok.flatMap((r) => (r as PromiseFulfilledResult<FoodSafetyItem[]>).value);
+}
+
 export async function foodSafetyFeed(): Promise<FoodSafetyFeed> {
   const db = database();
   const now = new Date();
@@ -80,28 +162,31 @@ export async function foodSafetyFeed(): Promise<FoodSafetyFeed> {
     .bind(CACHE_KEY, now.toISOString())
     .first<{ data: string }>();
   if (cached) return JSON.parse(cached.data) as FoodSafetyFeed;
-  const results = await Promise.allSettled(
-    FOOD_SAFETY_FEEDS.map(async (feed) => {
-      const r = await fetch(feed.url, {
-        headers: { Accept: "application/rss+xml, application/xml, text/xml" },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!r.ok) throw Error(`HTTP ${r.status}`);
-      return parseFeed(await r.text(), feed.kind);
-    }),
-  );
-  const items = results
-    .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+  let found: FoodSafetyItem[] = [];
+  let failed = false;
+  try {
+    found = await fromApi(now);
+  } catch (apiError) {
+    console.warn("FSA alerts API failed, trying the RSS feeds", apiError);
+    try {
+      found = await fromRss();
+    } catch (rssError) {
+      console.error("FSA alerts could not be read", rssError);
+      failed = true;
+    }
+  }
+  const seen = new Set<string>();
+  const items = found
+    .filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)))
     .sort((a, b) => b.published.localeCompare(a.published))
     .slice(0, 40);
-  const failed = results.filter((r) => r.status === "rejected").length;
   const feed: FoodSafetyFeed = {
     items,
     checkedAt: now.toISOString(),
     ...(failed ? { error: "The Food Standards Agency feed could not be reached. AutoSous will try again later." } : {}),
   };
   // A failed check is retried sooner than a good one.
-  const hours = failed === FOOD_SAFETY_FEEDS.length ? 1 : CACHE_HOURS;
+  const hours = failed ? 1 : CACHE_HOURS;
   await db
     .prepare(
       "INSERT INTO research_cache(id,data,expires_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,expires_at=excluded.expires_at",

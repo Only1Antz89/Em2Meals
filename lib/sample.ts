@@ -284,6 +284,7 @@ export function sampleState(): State {
     weightGrams: 500,
     reason: "Two attendees were absent; no dislike inferred.",
     date: today(),
+    disposal: "client",
   });
   run("finance", {
     type: "income",

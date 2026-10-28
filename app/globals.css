@@ -8263,3 +8263,123 @@ h2,
 .venue-kerb li.is-limited .venue-kerb-dot { background: #e0a443; }
 .venue-kerb li.is-loading .venue-kerb-dot { background: #2b6cb0; }
 .venue-kerb li.is-no .venue-kerb-dot { background: #d0453a; }
+
+/* Post-event waste check */
+.waste-check-dishes {
+  display: grid;
+  gap: 8px;
+}
+.waste-check-head,
+.waste-check-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) 132px 130px;
+  gap: 12px;
+  align-items: center;
+}
+.waste-check-head {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.waste-check-row {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.waste-check-row strong {
+  display: block;
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+.waste-check-row small {
+  color: var(--muted-foreground);
+}
+.waste-stepper {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.waste-stepper button {
+  min-height: 36px;
+  background: var(--secondary);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.waste-stepper input,
+.waste-weight {
+  min-width: 0;
+  min-height: 36px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: var(--card);
+}
+.waste-weight {
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  padding: 0 8px;
+}
+@media (max-width: 640px) {
+  .waste-check-head {
+    display: none;
+  }
+  .waste-check-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .waste-check-row > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Client Wrapped in the admin */
+.wrapped-admin {
+  display: grid;
+  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  padding: 20px 24px 24px;
+}
+.wrapped-admin-side {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.wrapped-quality {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--secondary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.wrapped-quality svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--ring);
+}
+.wrapped-quality p {
+  margin: 0;
+}
+.wrapped-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: auto;
+}
+@media (max-width: 900px) {
+  .wrapped-admin {
+    grid-template-columns: 1fr;
+  }
+}
+@media print {
+  body:has(> .wrapped-overlay) > *:not(.wrapped-overlay) {
+    display: none !important;
+  }
+  .wrapped-overlay {
+    position: static;
+    overflow: visible;
+  }
+}

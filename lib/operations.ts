@@ -252,6 +252,7 @@ export function tax(
 }
 export function normaliseState(s: State): State {
   s.journeys ||= [];
+  s.wrapped ||= [];
   s.recalls ||= [];
   s.menus ||= [];
   s.engagements ||= [];

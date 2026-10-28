@@ -5,6 +5,7 @@ import { authMode } from "./auth-mode";
 import { emptyState, type State, type Command, applyCommand } from "./domain";
 import { sampleState } from "./sample";
 import { liveMenu, type PublicMenu } from "./menu";
+import { publicWrapped, type WrappedStory } from "./wrapped";
 import { normaliseState, reconcileStock } from "./operations";
 import { assertStateIntegrity, assertStateShape } from "./state-integrity";
 declare global {
@@ -231,6 +232,16 @@ export async function readPublishedMenu(): Promise<PublicMenu | null> {
     .first<{ data: string }>();
   if (!row) return null;
   return liveMenu(JSON.parse(row.data) as Pick<State, "menus">);
+}
+// Public read for a shared Wrapped link: only the frozen client story.
+export async function readSharedWrapped(id: string): Promise<WrappedStory | null> {
+  if (!/^[a-f0-9]{32}$/.test(id)) return null;
+  const row = await database()
+    .prepare("SELECT data FROM workspaces WHERE id=?")
+    .bind("live")
+    .first<{ data: string }>();
+  if (!row) return null;
+  return publicWrapped(JSON.parse(row.data) as Pick<State, "wrapped">, id);
 }
 // Remove original website submissions (and their import records, by cascade)
 // by id, and any whose submitted email matches an erased customer.

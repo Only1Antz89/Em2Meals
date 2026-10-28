@@ -62,6 +62,7 @@ export function assertStateIntegrity(state: State) {
   ids(state.offerings, "offerings");
   const purchases = ids(state.purchases, "purchases");
   ids(state.waste, "waste");
+  ids(state.wrapped || [], "wrapped reports");
   ids(state.feedback, "feedback");
   ids(state.engagements, "engagements");
   ids(state.followUps, "follow-ups");
@@ -103,6 +104,8 @@ export function assertStateIntegrity(state: State) {
       reference(`purchase ${purchase.id}`, orderId, orders);
   }
 
+  for (const share of state.wrapped || [])
+    reference(`wrapped report ${share.id}`, share.customerId, customers);
   for (const waste of state.waste) {
     reference(`waste ${waste.id}`, waste.orderId, orders, true);
     reference(`waste ${waste.id}`, waste.ingredientId, ingredients, true);

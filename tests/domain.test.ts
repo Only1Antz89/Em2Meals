@@ -1025,6 +1025,7 @@ test("inclusive invoice preserves accepted totals and issued records cannot edit
 });
 
 import "./reporting.test";
+import "./wrapped.test";
 
 import { liveMenu, publicMenu, generateMenu, type Menu } from "../lib/menu";
 import { assertStateIntegrity } from "../lib/state-integrity";

@@ -121,6 +121,8 @@ export function privacyCommand(
       if (item.customerId === customer.id) item.comment = "";
     s.engagements = s.engagements.filter((x) => x.customerId !== customer.id);
     s.followUps = s.followUps.filter((x) => x.customerId !== customer.id);
+    // Shared Wrapped links carry the customer's name and quotes: withdraw them.
+    s.wrapped = (s.wrapped || []).filter((x) => x.customerId !== customer.id);
     return customer.id;
   }
   if (type === "order-delete") {

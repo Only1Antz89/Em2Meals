@@ -134,6 +134,10 @@ export function periodLabel(from: string, to: string) {
     to === lastDayOfMonth(to)
   )
     return fmt(from, { month: "long", year: "numeric" });
+  // A rolling twelve months across two years reads as "2025–26".
+  const days = (Date.parse(to) - Date.parse(from)) / 86400000;
+  if (from.endsWith("-01") && days >= 330 && days <= 366 && from.slice(0, 4) !== to.slice(0, 4))
+    return `${from.slice(0, 4)}–${to.slice(2, 4)}`;
   const sameYear = from.slice(0, 4) === to.slice(0, 4);
   return `${fmt(from, sameYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" })} – ${fmt(to, { day: "numeric", month: "short", year: "numeric" })}`;
 }

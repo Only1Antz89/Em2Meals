@@ -12,7 +12,7 @@ import {
 } from "./admin-client";
 import { Button } from "@/components/ui/button";
 import { money, today } from "@/lib/domain";
-import { customerExport, wasteReport } from "@/lib/reporting";
+import { customerExport, presetDates, wasteReport } from "@/lib/reporting";
 import {
   buildWrapped,
   checksDue,
@@ -26,7 +26,7 @@ import { WasteCheckDialog } from "./waste-check";
 import { Field } from "@/components/form-controls";
 import { ReportControls, useReportFilters, exportCSV } from "./report-controls";
 export default function WasteReports() {
-  const { s, open } = useOps();
+  const { s, open, mode } = useOps();
   const { filter, setFilter } = useReportFilters();
   const r = useMemo(() => wasteReport(s, filter), [s, filter]);
   const due = useMemo(() => checksDue(s, filter), [s, filter]);
@@ -306,6 +306,22 @@ export default function WasteReports() {
             of what they ate, what came back and where it went, ready to share
             by link or save as a PDF.
           </p>
+          {mode === "sample" &&
+            s.customers.some((c) => c.id === "sample-client-harbour") && (
+              <div className="inline-actions">
+                <Button
+                  onClick={() =>
+                    setFilter({
+                      ...presetDates("twelve-months"),
+                      customerId: "sample-client-harbour",
+                      service: "all",
+                    })
+                  }
+                >
+                  <Sparkles size={15} /> See the example Wrapped
+                </Button>
+              </div>
+            )}
         </Panel>
       )}
     </>

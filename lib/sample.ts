@@ -5,6 +5,7 @@ import {
   type State,
   type Enquiry,
 } from "./domain";
+import { presetDates } from "./reporting";
 export function sampleState(): State {
   let s = emptyState();
   const run = (type: string, payload: unknown) => {
@@ -521,6 +522,102 @@ export function sampleState(): State {
       dueDate,
       status: "open",
     });
+  // Client Wrapped example: a regular client with five checked lunches.
+  // Events stay over a month old so month-to-date sample figures don't move.
+  run("customer", {
+    id: "sample-client-harbour",
+    name: "Jordan Lee",
+    company: "Harbour & Co · sample",
+    email: "jordan@harbourco.example",
+    phone: "020 0000 0000",
+    industry: "Business & professional services",
+    notes: "Monthly team lunches. Sample client for the Wrapped report.",
+  });
+  const recipeName = (id: string) => {
+    const r = s.recipes.find((x) => x.id === id)!;
+    return `${r.name} · ${r.variant}`;
+  };
+  const harbourEvents: {
+    days: number;
+    guests: number;
+    came: number;
+    dishes: [string, number, number][];
+    plate: number;
+    rating: number;
+    comment: string;
+  }[] = [
+    { days: 180, guests: 40, came: 34, dishes: [["grilled-lemon-chicken", 18, 4], ["summer-garden-salad", 14, 5], ["berry-eton-mess", 10, 1]], plate: 2400, rating: 4, comment: "Lovely food, though we over-ordered on salad." },
+    { days: 145, guests: 36, came: 33, dishes: [["grilled-lemon-chicken", 16, 1], ["grilled-halloumi-skewers", 10, 2], ["summer-garden-salad", 10, 3]], plate: 1800, rating: 5, comment: "" },
+    { days: 110, guests: 38, came: 36, dishes: [["grilled-lemon-chicken", 18, 0], ["grilled-halloumi-skewers", 10, 1], ["berry-eton-mess", 12, 1]], plate: 1500, rating: 5, comment: "The lemon chicken has become the office favourite. Everything was fresh and beautifully presented." },
+    { days: 75, guests: 42, came: 41, dishes: [["grilled-lemon-chicken", 20, 0], ["grilled-halloumi-skewers", 12, 1], ["summer-garden-salad", 10, 1]], plate: 1300, rating: 5, comment: "" },
+    { days: 40, guests: 44, came: 43, dishes: [["grilled-lemon-chicken", 20, 0], ["grilled-halloumi-skewers", 12, 0], ["berry-eton-mess", 14, 1]], plate: 1100, rating: 5, comment: "Another brilliant lunch. Thank you for remembering every dietary need." },
+  ];
+  harbourEvents.forEach((e, i) => {
+    const id = `sample-harbour-${i + 1}`;
+    s.orders.push({
+      id,
+      reference: `EM-SAMPLE-01${i + 1}`,
+      customerId: "sample-client-harbour",
+      createdAt: isoDaysAgo(e.days + 20),
+      statusHistory: [
+        { status: "enquiry", at: isoDaysAgo(e.days + 20) },
+        { status: "confirmed", at: isoDaysAgo(e.days + 14) },
+        { status: "delivered", at: isoDaysAgo(e.days) },
+      ],
+      details: {
+        ...details,
+        name: "Jordan Lee",
+        company: "Harbour & Co · sample",
+        email: "jordan@harbourco.example",
+        eventType: "Team lunch",
+        attendees: e.guests,
+        date: dateDaysAgo(e.days),
+      },
+      status: "delivered",
+      items: e.dishes.map(([recipeId, quantity]) => ({ recipeId, quantity })),
+      quotes: [],
+      costSnapshot: {
+        total: 0,
+        items: e.dishes.map(([recipeId, quantity]) => ({
+          recipeId,
+          name: recipeName(recipeId),
+          quantity,
+          unitCost: 300,
+          lines: [],
+        })),
+      },
+      allergyReviewed: true,
+      consumed: true,
+      reservations: [],
+    });
+    run("waste-check", {
+      orderId: id,
+      date: dateDaysAgo(e.days),
+      guests: e.came,
+      dishes: e.dishes.map(([recipeId, , leftover]) => ({
+        recipeId,
+        leftover,
+        weightGrams: leftover ? leftover * 280 : null,
+      })),
+      plateWasteGrams: e.plate,
+      leftoverDisposal: i % 2 ? "staff" : "client",
+      plateDisposal: "recycled",
+      notes: "",
+    });
+    run("feedback", {
+      customerId: "sample-client-harbour",
+      orderId: id,
+      rating: e.rating,
+      comment: e.comment,
+      date: dateDaysAgo(e.days - 1),
+    });
+  });
+  run("wrapped-share", {
+    customerId: "sample-client-harbour",
+    ...presetDates("twelve-months"),
+    service: "all",
+    note: "Thank you for a brilliant year of lunches. See you at the Christmas party!",
+  });
   run("menu-generate", { year: Number(today().slice(0, 4)), season: "Summer" });
   const menu = s.menus.at(-1)!;
   const prices: Record<string, number> = {

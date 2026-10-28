@@ -103,7 +103,9 @@ export async function loadState(mode = "live") {
     (!original.schemaVersion ||
       original.schemaVersion < 5 ||
       // Samples made before batch lot codes and recalls existed.
-      !Array.isArray((original as Partial<State>).recalls));
+      !Array.isArray((original as Partial<State>).recalls) ||
+      // Samples made before the client Wrapped example existed.
+      !(original.customers || []).some((c) => c.id === "sample-client-harbour"));
   const state = refreshSample ? sampleState() : normaliseState(original);
   if (refreshSample) {
     // Save the refreshed sample so record ids stay stable between loads.

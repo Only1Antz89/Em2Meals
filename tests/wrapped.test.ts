@@ -136,4 +136,14 @@ test("period labels read naturally", () => {
   assert.equal(periodLabel("2026-01-01", "2026-12-31"), "2026");
   assert.equal(periodLabel("2026-06-01", "2026-06-30"), "June 2026");
   assert.equal(periodLabel("2026-06-01", "2026-08-31"), "1 Jun – 31 Aug 2026");
+  assert.equal(periodLabel("2025-11-01", "2026-10-28"), "2025–26");
+});
+
+test("sample workspace includes a shared example Wrapped", () => {
+  const s = sampleState();
+  assertStateIntegrity(s);
+  const share = s.wrapped?.find((x) => x.customerId === "sample-client-harbour");
+  assert.ok(share && !share.revokedAt);
+  assert.equal(share.story.occasions, 5);
+  assert.deepEqual(share.story.coverage, { checked: 5, events: 5 });
 });

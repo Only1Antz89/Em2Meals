@@ -685,6 +685,9 @@
   width: 180px;
   height: 180px;
 }
+.embed .ring strong {
+  font-size: 2.5rem;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .slide,

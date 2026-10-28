@@ -341,6 +341,59 @@ export function sampleState(): State {
   run("stage", { orderId: "sample-upcoming", status: "confirmed" });
   run("stage", { orderId: "sample-upcoming", status: "ingredients needed" });
 
+  // Example vehicle, team and job hours for the Costs & travel page.
+  run("vehicle", {
+    registration: "",
+    name: "Delivery van · example",
+    make: "Hyundai",
+    model: "Tucson 1.6 GDi",
+    fuelType: "petrol",
+    year: 2018,
+    engineCc: 1591,
+    co2: 147,
+    firstRegistered: "2018-03",
+    mpg: 34,
+    economySource: "measured",
+    fuelPrice: 1.5,
+    isDefault: true,
+  });
+  const vehicleId = s.vehicles[0].id;
+  run("staff", {
+    name: "Em (owner) · example",
+    role: "Head chef",
+    employment: "owner",
+    hourlyRate: 2500,
+    onCostPercent: 0,
+  });
+  run("staff", {
+    name: "Sam Lee · example",
+    role: "Kitchen assistant",
+    employment: "employee",
+    hourlyRate: 1221,
+    onCostPercent: 18,
+  });
+  const [chefId, assistantId] = s.staff.map((m) => m.id);
+  for (const [staffId, start, end, status, orderId, date] of [
+    [chefId, "07:30", "13:30", "worked", "sample-delivered", today()],
+    [assistantId, "08:00", "13:00", "worked", "sample-delivered", today()],
+    [chefId, "08:00", "14:00", "planned", "sample-upcoming", s.orders.find((o) => o.id === "sample-upcoming")!.details.date],
+    [assistantId, "09:00", "14:00", "planned", "sample-upcoming", s.orders.find((o) => o.id === "sample-upcoming")!.details.date],
+  ] as const)
+    run("shift", { staffId, orderId, date, start, end, breakMinutes: 0, status });
+  run("journey", {
+    orderId: "sample-delivered",
+    service: "corporate",
+    date: today(),
+    miles: 14,
+    minutes: 50,
+    fuelCost: null,
+    vehicleId,
+    extraCost: 600,
+    status: "actual",
+    notes: "Kitchen to Northbank and back · example",
+    paymentDate: "",
+  });
+
   const isoDaysAgo = (days: number) =>
     new Date(Date.now() - days * 86400000).toISOString();
   const dateDaysAgo = (days: number) => isoDaysAgo(days).slice(0, 10);

@@ -8,7 +8,7 @@ import {
   config,
 } from "@/lib/server";
 import { googleJSON } from "@/lib/integrations";
-import { fuelCost } from "@/lib/domain";
+import { tripFuelCost } from "@/lib/team-fleet";
 import { z } from "zod";
 export async function POST(req: Request) {
   try {
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
       outboundMinutes: outbound.minutes,
       returnMiles: inbound.miles,
       returnMinutes: inbound.minutes,
-      fuelCost: fuelCost(miles, state.settings.mpg, state.settings.fuelPrice),
+      fuelCost: tripFuelCost(state, miles),
       source: p.returnTrip
         ? "Google Maps traffic-aware outbound and return routes"
         : "Google Maps traffic-aware route",

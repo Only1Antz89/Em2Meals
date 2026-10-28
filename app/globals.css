@@ -2055,6 +2055,24 @@ h2,
   line-height: 1.65;
   border-top: 1px solid #edf0ea;
 }
+/* Wide cost tables scroll sideways on phones instead of squashing. */
+@media (max-width: 900px) {
+  .costs-travel [data-slot="table-container"] table {
+    min-width: 760px;
+  }
+  .costs-travel [data-slot="table-cell"] {
+    overflow-wrap: normal;
+  }
+}
+.panel-subhead {
+  padding: 18px 24px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #4e686c;
+  border-top: 1px solid #edf0ea;
+}
 .kitchen-note {
   padding: 35px;
   background: #f5f3ec;

@@ -9,6 +9,13 @@ import { recallCommand } from "./recalls";
 import { type Menu, menuCommand } from "./menu";
 import { privacyCommand } from "./privacy";
 import {
+  type Vehicle,
+  type StaffMember,
+  type Shift,
+  teamFleetCommand,
+  tripFuelCost,
+} from "./team-fleet";
+import {
   type OperationsState,
   type Place,
   type Research,
@@ -243,6 +250,9 @@ export const sameLot = (a: string | undefined, b: string) =>
   !!a && a.trim().replace(/\s+/g, "").toUpperCase() === b.trim().replace(/\s+/g, "").toUpperCase();
 export type State = OperationsState & {
   journeys: Journey[];
+  vehicles: Vehicle[];
+  staff: StaffMember[];
+  shifts: Shift[];
   menus: Menu[];
   settings: {
     priceMode?: "exclusive" | "inclusive";
@@ -413,6 +423,9 @@ export function emptyState(): State {
   return {
     schemaVersion: 5,
     journeys: [],
+    vehicles: [],
+    staff: [],
+    shifts: [],
     menus: [],
     offerings: [],
     invoices: [],
@@ -1709,7 +1722,7 @@ export function applyCommand(
         })
         .transform((v) => ({
           ...v,
-          fuelCost: fuelCost(v.miles, s.settings.mpg, s.settings.fuelPrice),
+          fuelCost: tripFuelCost(s, v.miles),
           source: "Manual estimate",
           at,
         }))
@@ -1727,7 +1740,8 @@ export function applyCommand(
         menuCommand(s, command.type, p, at) ??
         recallCommand(s, command.type, p, at) ??
         privacyCommand(s, command.type, p, at) ??
-        reportingCommand(s, command.type, p);
+        reportingCommand(s, command.type, p) ??
+        teamFleetCommand(s, command.type, p);
       if (result === undefined) throw Error("Unknown action");
       target = result;
     }

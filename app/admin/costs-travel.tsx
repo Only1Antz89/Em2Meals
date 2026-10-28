@@ -9,6 +9,8 @@ import {
   type ReportFilter,
   type Journey,
 } from "@/lib/reporting";
+import { defaultVehicle, fuelTypeLabels } from "@/lib/team-fleet";
+import { ShiftsPanel, StaffPanel, VehiclesPanel } from "./team-fleet-panels";
 const services = [
   { value: "shared", label: "Shared business" },
   { value: "private", label: "Private services" },
@@ -98,7 +100,8 @@ export function expenseEditor(
       },
       {
         key: "hours",
-        label: "Labour hours (optional; total cost entered above)",
+        label:
+          "Labour hours (optional; use Job assignments below to cost staff by the hour)",
         type: "number",
       },
     ],
@@ -112,7 +115,11 @@ function journeyEditor(s: State, j?: Journey): Edit {
     values: j
       ? {
           ...j,
-          fuel: j.fuelCost === null ? "" : String(j.fuelCost / 100),
+          vehicleId: j.vehicleId || "",
+          fuel:
+            j.fuelCost === null || j.fuelEstimated
+              ? ""
+              : String(j.fuelCost / 100),
           paymentDate:
             s.finance.find((f) => f.journeyId === j.id)?.paymentDate || "",
         }
@@ -122,6 +129,7 @@ function journeyEditor(s: State, j?: Journey): Edit {
           service: "shared",
           status: "actual",
           fuel: "",
+          vehicleId: defaultVehicle(s)?.id || "",
           extraCost: 0,
           paymentDate: "",
           notes: "",
@@ -132,7 +140,25 @@ function journeyEditor(s: State, j?: Journey): Edit {
         label: "Related order",
         options: [
           { value: "", label: "No individual order" },
-          ...s.orders.map((o) => ({ value: o.id, label: o.reference })),
+          ...s.orders.map((o) => ({
+            value: o.id,
+            label: o.route
+              ? `${o.reference} · route estimate ${Math.round(o.route.miles)} mi`
+              : o.reference,
+          })),
+        ],
+      },
+      {
+        key: "vehicleId",
+        label: "Vehicle",
+        options: [
+          { value: "", label: "Not recorded" },
+          ...s.vehicles
+            .filter((v) => v.active || v.id === j?.vehicleId)
+            .map((v) => ({
+              value: v.id,
+              label: `${v.name} (${fuelTypeLabels[v.fuelType]})`,
+            })),
         ],
       },
       {
@@ -152,7 +178,10 @@ function journeyEditor(s: State, j?: Journey): Edit {
         type: "number",
       },
       { key: "minutes", label: "Total travel minutes", type: "number" },
-      { key: "fuel", label: "Fuel cost (£; blank if unknown)" },
+      {
+        key: "fuel",
+        label: "Fuel cost from receipt (£; blank = estimate from vehicle)",
+      },
       {
         key: "extraCost",
         label: "Parking, tolls and other travel charges (£)",
@@ -185,7 +214,7 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
   );
   const journeys = s.journeys.filter((j) => matches(j) && inPeriod(j.date, f));
   return (
-    <>
+    <div className="costs-travel">
       <Panel
         title="Costs & labour"
         action={
@@ -221,6 +250,8 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
               x.excluded ? "Excluded" : x.status || "Unclassified",
               x.journeyId ? (
                 <span key="journey">Edit journey below</span>
+              ) : x.shiftId ? (
+                <span key="shift">Edit assignment below</span>
               ) : (
                 <Button
                   key="edit"
@@ -238,6 +269,9 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
           as ingredients: consumption is already costed through stock movements.
         </p>
       </Panel>
+      <StaffPanel filter={f} />
+      <ShiftsPanel filter={f} matches={matches} />
+      <VehiclesPanel filter={f} />
       <Panel
         title="Actual and estimated journeys"
         action={
@@ -248,6 +282,7 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
           heads={[
             "Date",
             "Order / service",
+            "Vehicle",
             "Miles",
             "Minutes",
             "Fuel",
@@ -258,9 +293,12 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
           rows={journeys.map((j) => [
             j.date,
             s.orders.find((o) => o.id === j.orderId)?.reference || j.service,
+            s.vehicles.find((v) => v.id === j.vehicleId)?.name || "—",
             j.miles,
             j.minutes,
-            j.fuelCost === null ? "Unknown" : money(j.fuelCost),
+            j.fuelCost === null
+              ? "Unknown"
+              : `${money(j.fuelCost)}${j.fuelEstimated ? " (est.)" : ""}`,
             money(j.extraCost),
             j.status,
             <Button
@@ -273,7 +311,8 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
           ])}
         />
         <p className="panel-note">
-          Actual journeys replace the order’s route estimate. Journey costs
+          Actual journeys replace the order’s route estimate. Leave the fuel
+          blank to price it from the vehicle’s MPG and fuel price. Journey costs
           create one linked expense record; don’t re-enter the same receipt as a
           separate expense. Multiple actual journeys are added together.
         </p>
@@ -396,6 +435,6 @@ export default function CostsTravel({ filter: f }: { filter: ReportFilter }) {
         />
         <Tag>Audit history is retained</Tag>
       </Panel>
-    </>
+    </div>
   );
 }

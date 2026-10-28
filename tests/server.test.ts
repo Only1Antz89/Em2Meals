@@ -1020,3 +1020,57 @@ test("AutoSous rejects proposals that would fail and reports setup errors", asyn
     delete env.GEMINI_API_KEY;
   }
 });
+import { POST as vehicleLookup } from "../app/api/admin/vehicle-lookup/route";
+test("number plate lookup maps DVLA data and estimates MPG from CO2", async () => {
+  resetDB();
+  delete env.DVLA_API_KEY;
+  const missing = await vehicleLookup(req({ registration: "AB12 CDE" }));
+  assert.equal(missing.status, 400);
+  assert.match(((await missing.json()) as { error: string }).error, /not set up/);
+  env.DVLA_API_KEY = "fake-dvla-key";
+  const originalFetch = globalThis.fetch;
+  let sent: { key?: string | null; body?: string } = {};
+  globalThis.fetch = async (_input, init) => {
+    sent = {
+      key: new Headers(init?.headers).get("x-api-key"),
+      body: String(init?.body),
+    };
+    return Response.json({
+      registrationNumber: "AB12CDE",
+      make: "HYUNDAI",
+      colour: "WHITE",
+      fuelType: "PETROL",
+      engineCapacity: 1591,
+      co2Emissions: 147,
+      yearOfManufacture: 2018,
+      monthOfFirstRegistration: "2018-03",
+      motStatus: "Valid",
+      motExpiryDate: "2027-03-01",
+      taxStatus: "Taxed",
+      taxDueDate: "2027-04-01",
+    });
+  };
+  try {
+    const r = await vehicleLookup(req({ registration: "ab12 cde" }));
+    assert.equal(r.status, 200);
+    const { vehicle } = (await r.json()) as {
+      vehicle: { registration: string; make: string; fuelType: string; estimatedMpg: number; dvla: { colour: string; motStatus: string } };
+    };
+    assert.equal(sent.key, "fake-dvla-key");
+    assert.deepEqual(JSON.parse(sent.body!), { registrationNumber: "AB12CDE" });
+    assert.equal(vehicle.registration, "AB12CDE");
+    assert.equal(vehicle.make, "Hyundai");
+    assert.equal(vehicle.fuelType, "petrol");
+    assert.equal(vehicle.estimatedMpg, 35.5);
+    assert.equal(vehicle.dvla.colour, "White");
+    assert.equal(vehicle.dvla.motStatus, "Valid");
+    globalThis.fetch = async () => Response.json({ errors: [] }, { status: 404 });
+    const notFound = await vehicleLookup(req({ registration: "ZZ99 ZZZ" }));
+    assert.match(((await notFound.json()) as { error: string }).error, /no vehicle/);
+    const bad = await vehicleLookup(req({ registration: "!!" }));
+    assert.equal(bad.status, 400);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete env.DVLA_API_KEY;
+  }
+});

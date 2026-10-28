@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { type State, type Order, today, uid } from "./domain";
 import { dateValue, tax } from "./operations";
+import { tripFuelCost } from "./team-fleet";
 
 export const industries = [
   "Unclassified",
@@ -32,6 +33,7 @@ export type FinanceExtra = {
   recoverableVAT?: number;
   purchaseId?: string;
   journeyId?: string;
+  shiftId?: string;
   hours?: number;
   excluded?: boolean;
   reconciliationNote?: string;
@@ -44,6 +46,9 @@ export type Journey = {
   miles: number;
   minutes: number;
   fuelCost: number | null;
+  // Set when the fuel cost was worked out from the vehicle, not a receipt.
+  fuelEstimated?: boolean;
+  vehicleId?: string;
   extraCost: number;
   status: "actual" | "estimated";
   notes: string;
@@ -227,6 +232,7 @@ export type Job = {
   revenue: number;
   ingredients: number;
   labour: number;
+  labourHours: number;
   travel: number;
   miles: number;
   minutes: number;
@@ -298,6 +304,7 @@ export function jobPerformance(s: State, o: Order): Job {
     revenue,
     ingredients,
     labour: labourCost,
+    labourHours: labour.reduce((n, x) => n + (x.hours || 0), 0),
     travel,
     miles,
     minutes,
@@ -795,7 +802,7 @@ export function reportingCommand(
         })
         .parse(p);
       const old = s.finance.find((x) => x.id === v.id);
-      if (v.id && (!old || old.type !== "expense" || old.journeyId))
+      if (v.id && (!old || old.type !== "expense" || old.journeyId || old.shiftId))
         throw Error("Select an editable expense");
       if (v.purchaseId && !s.purchases.some((x) => x.id === v.purchaseId))
         throw Error("Purchase not found");
@@ -831,6 +838,7 @@ export function reportingCommand(
           miles: num,
           minutes: num,
           fuelCost: amount.nullable(),
+          vehicleId: text.default(""),
           extraCost: amount,
           status: z.enum(["actual", "estimated"]),
           notes: text,
@@ -839,11 +847,18 @@ export function reportingCommand(
         .parse(p);
       if (v.id && !s.journeys.some((j) => j.id === v.id))
         throw Error("Journey not found");
+      if (v.vehicleId && !s.vehicles.some((x) => x.id === v.vehicleId))
+        throw Error("Vehicle not found");
       const id = v.id || uid(),
         service = serviceFor(s, v.orderId, v.service);
+      // No receipt: estimate the fuel from the vehicle's economy.
+      const estimate =
+        v.fuelCost === null ? tripFuelCost(s, v.miles, v.vehicleId) : null;
+      const fuelEstimated = v.fuelCost === null && estimate !== null;
+      v.fuelCost ??= estimate;
       s.journeys = s.journeys
         .filter((j) => j.id !== id)
-        .concat({ ...v, id, service });
+        .concat({ ...v, id, service, fuelEstimated });
       const old = s.finance.find((x) => x.journeyId === id);
       s.finance = s.finance
         .filter((x) => x.journeyId !== id)
@@ -906,7 +921,7 @@ export function reportingCommand(
     case "finance-exclude": {
       const v = z.object({ id: text, reason: text.min(5) }).parse(p);
       const f = s.finance.find((x) => x.id === v.id);
-      if (!f || f.invoiceId || f.journeyId)
+      if (!f || f.invoiceId || f.journeyId || f.shiftId)
         throw Error("Only unlinked legacy entries can be excluded");
       f.excluded = true;
       f.reconciliationNote = v.reason;

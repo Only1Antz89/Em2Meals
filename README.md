@@ -56,6 +56,7 @@ Use **Vercel project environment variables** for production values; local `.env`
 | `GEMINI_API_KEY`      | Server-side Gemini API credential.                                            |
 | `GEMINI_MODEL`        | Defaults to `gemini-3.6-flash`; set a supported model for the Google project. |
 | `GOOGLE_MAPS_API_KEY` | Server-side key with Places API (New) and Routes API enabled.                 |
+| `DVLA_API_KEY`        | Optional. DVLA Vehicle Enquiry Service key (free) for number plate lookups on Costs & travel. Apply at developer-portal.driver-vehicle-licensing.api.gov.uk. |
 | `RESEND_API_KEY`      | Resend API key. When set, email is sent through Resend instead of SMTP2GO.    |
 | `SMTP2GO_API_KEY`     | SMTP2GO API credential with `/email/send` permission (used when no Resend key). |
 | `EMAIL_FROM`          | Sender on a domain verified with your email provider, e.g. `Fork Goodness Baked <hello@your-domain.example>`. |

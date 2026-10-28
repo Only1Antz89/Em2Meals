@@ -1,5 +1,5 @@
 import {
-  owner,
+  requireAccess,
   sameOrigin,
   jsonBody,
   errorResponse,
@@ -18,8 +18,7 @@ import { z } from "zod";
 export async function POST(req: Request) {
   let locked: string | undefined;
   try {
-    if (!(await owner()))
-      return errorResponse(Error("Owner access required"), 403);
+    await requireAccess("crm");
     sameOrigin(req);
     const { draftId, mode } = z
       .object({

@@ -8263,3 +8263,141 @@ h2,
 .venue-kerb li.is-limited .venue-kerb-dot { background: #e0a443; }
 .venue-kerb li.is-loading .venue-kerb-dot { background: #2b6cb0; }
 .venue-kerb li.is-no .venue-kerb-dot { background: #d0453a; }
+
+/* Settings: team & access */
+a.owner-account {
+  color: inherit;
+  text-decoration: none;
+}
+.setup-steps {
+  list-style: none;
+  margin: 0;
+  padding: 16px 24px 4px;
+  display: grid;
+  gap: 10px;
+}
+.setup-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+.setup-steps li.done {
+  color: #697775;
+}
+.setup-steps li.done svg {
+  color: #4f7a5b;
+}
+.setup-list {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+.access-warning {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: #f8ece9;
+  border: 1px solid #e7c9c1;
+  color: #7a263a;
+  padding: 14px 16px;
+  border-radius: 4px;
+  margin-bottom: 24px;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+.access-warning p {
+  margin: 0;
+}
+.access-warning svg {
+  flex: none;
+  margin-top: 2px;
+}
+.team-invite {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.8fr auto;
+  gap: 16px;
+  align-items: end;
+  padding: 24px 24px 0;
+}
+.team-person {
+  display: grid;
+  gap: 2px;
+}
+.team-person small {
+  color: #697775;
+  font-size: 0.72rem;
+}
+.team-role {
+  border: 1px solid #d9e0d6;
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: white;
+  font-size: 0.8rem;
+  min-height: 32px;
+}
+.team-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.team-notice {
+  border: 1px solid #cfe0d1;
+  background: #eef5ee;
+  padding: 14px 16px;
+  border-radius: 4px;
+  margin-bottom: 24px;
+  font-size: 0.85rem;
+}
+.team-notice p {
+  margin: 0;
+}
+.copy-link {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.copy-link input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #d9e0d6;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  background: white;
+}
+.role-matrix-wrap {
+  overflow-x: auto;
+  padding: 8px 24px 24px;
+}
+.role-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  min-width: 520px;
+}
+.role-matrix th,
+.role-matrix td {
+  border-bottom: 1px solid #edf0ea;
+  padding: 10px 8px;
+  text-align: center;
+}
+.role-matrix th[scope="row"],
+.role-matrix thead th:first-child {
+  text-align: left;
+  font-weight: 500;
+}
+.role-matrix td svg {
+  color: #4f7a5b;
+  display: inline-block;
+}
+.account-profile {
+  padding: 0 24px 24px;
+  overflow-x: auto;
+}
+@media (max-width: 760px) {
+  .team-invite {
+    grid-template-columns: 1fr;
+  }
+}

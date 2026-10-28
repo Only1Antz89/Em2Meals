@@ -1,6 +1,7 @@
+import { visibleState } from "@/lib/access";
 import { VENUE_SYSTEM } from "@/lib/venue-research";
 import {
-  owner,
+  requireAccess,
   sameOrigin,
   jsonBody,
   loadState,
@@ -15,8 +16,7 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const user = await owner();
-    if (!user) return errorResponse(Error("Owner access required"), 403);
+    const user = await requireAccess("view");
     sameOrigin(req);
     const p = z
       .object({
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       })
       .parse(await jsonBody(req));
     await rateLimit(req, "assistant", 120);
-    const { state: s } = await loadState(p.mode);
+    const s = visibleState((await loadState(p.mode)).state, user.role);
     if (p.venueOrderId) {
       const o = s.orders.find((x) => x.id === p.venueOrderId);
       if (!o) throw Error("Order not found");

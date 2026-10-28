@@ -1,7 +1,8 @@
 import { ZodError } from "zod";
 import { getDb } from "@/db";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { authMode } from "./auth-mode";
+import { can, type Permission } from "./access";
+import { AccessDenied, assertCan, currentMember } from "./team";
 import { emptyState, type State, type Command, applyCommand } from "./domain";
 import { sampleState } from "./sample";
 import { liveMenu, type PublicMenu } from "./menu";
@@ -22,6 +23,7 @@ export const config = () => {
   // these safely into server bundles, whereas passing the process.env object
   // through indirectly can leave serverless functions with an empty shim.
   return {
+    CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
     EMAIL_FROM: process.env.EMAIL_FROM,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
@@ -42,21 +44,14 @@ export const config = () => {
 export function database() {
   return getDb();
 }
-export async function owner() {
-  const user = await getChatGPTUser();
-  if (!user) return null;
-  if (authMode() === "demo") return user;
-  const emails = String(config().OWNER_EMAILS || "")
-    .split(",")
-    .map((x) => x.trim().toLowerCase())
-    .filter(Boolean);
-  const ids = String(config().OWNER_IDS || "")
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-  return emails.includes(user.email.toLowerCase()) || ids.includes(user.userId)
-    ? user
-    : null;
+// The signed-in person when their role includes the permission, or null.
+export async function owner(permission: Permission = "view") {
+  const member = await currentMember(config());
+  return member && can(member.role, permission) ? member : null;
+}
+// Like owner(), but throws a 403 error that names what the role is missing.
+export async function requireAccess(permission: Permission = "view") {
+  return assertCan(await currentMember(config()), permission);
 }
 export function sameOrigin(req: Request) {
   const origin = req.headers.get("origin");
@@ -275,6 +270,7 @@ export async function readEnquiries() {
   }));
 }
 export function errorResponse(e: unknown, status = 400) {
+  if (e instanceof AccessDenied) status = 403;
   const message =
     e instanceof ZodError
       ? e.issues
@@ -300,6 +296,7 @@ export function integrationStatus() {
     maps: !!c.GOOGLE_MAPS_API_KEY,
     email: !!((c.RESEND_API_KEY || c.SMTP2GO_API_KEY) && c.EMAIL_FROM),
     owner: !!(c.OWNER_EMAILS || c.OWNER_IDS),
+    clerk: authMode() === "clerk" && !!c.CLERK_SECRET_KEY,
   };
 }
 export async function jsonBody(req: Request) {

@@ -34,16 +34,17 @@ async function Gate({
   section: string[];
   initialMode: "live" | "sample";
 }) {
-  await requireChatGPTUser("/admin/" + section.join("/"));
+  const signedIn = await requireChatGPTUser("/admin/" + section.join("/"));
   const user = await owner();
   if (!user)
     return (
       <main className="access-page">
         <Brand admin />
-        <h1>Owner access required</h1>
+        <h1>Workspace access required</h1>
         <p>
-          This account isn’t on the owner allowlist. The site owner can
-          configure OWNER_EMAILS in the deployment settings.
+          This account ({signedIn?.email}) doesn’t have access to the
+          workspace, or its access has been suspended. Ask an owner to add you
+          in Settings → Team &amp; access.
         </p>
         <Link href="/">Back to Fork Goodness Baked</Link>
       </main>
@@ -58,6 +59,8 @@ async function Gate({
       <Admin
         section={section}
         ownerEmail={user.email}
+        displayName={user.displayName}
+        role={user.role}
         authMode={authMode()}
         initialMode={initialMode}
       />

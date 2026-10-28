@@ -2,7 +2,7 @@ import { build } from "esbuild";
 import { mkdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 await mkdir(".sites-runtime/tests", { recursive: true });
-const tests = ["domain", "ingredient-reference", "autosous"];
+const tests = ["domain", "ingredient-reference", "autosous", "supplier"];
 await build({
   entryPoints: tests.map((name) => `tests/${name}.test.ts`),
   bundle: true,

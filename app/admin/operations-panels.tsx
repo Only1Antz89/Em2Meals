@@ -18,6 +18,7 @@ import {
   type Offering,
   type Research,
 } from "@/lib/operations";
+import { planningLead, supplierPerformance } from "@/lib/supplier-tracking";
 export function ExpiryBadge({
   expiry,
   dateType,
@@ -776,12 +777,13 @@ export function SupplierInsights({
                 <dd>{money(supplier.minimumOrder)}</dd>
               </div>
               <div>
-                <dt>Lead time</dt>
+                <dt>Stated lead time</dt>
                 <dd>
                   {supplier.leadDays}{" "}
                   {supplier.leadDays === 1 ? "day" : "days"}
                 </dd>
               </div>
+              <SupplierRecord supplierId={supplier.id} />
             </dl>
           </div>
           {(supplier.businessDetails || supplier.notes) && (
@@ -1188,4 +1190,48 @@ export function UpcomingVenueResearch() {
     );
   }, [s.orders, api, busy, integrations.gemini]);
   return null;
+}
+
+// What past deliveries say about a supplier: real lead time, how often they
+// arrive on time and how quickly they confirm orders.
+function SupplierRecord({ supplierId }: { supplierId: string }) {
+  const { s } = useOps();
+  const perf = supplierPerformance(s, supplierId);
+  const lead = planningLead(s, supplierId);
+  return (
+    <>
+      <div>
+        <dt>Plan for</dt>
+        <dd>
+          {lead.days} {lead.days === 1 ? "day" : "days"}
+          <small className="subtext">{lead.note}</small>
+        </dd>
+      </div>
+      <div>
+        <dt>On time</dt>
+        <dd>
+          {perf.onTimeRate === null
+            ? "No deliveries yet"
+            : `${Math.round(perf.onTimeRate * 100)}% of ${perf.deliveries}`}
+          {perf.shortDeliveries > 0 && (
+            <small className="subtext">
+              {perf.shortDeliveries} arrived short
+            </small>
+          )}
+        </dd>
+      </div>
+      <div>
+        <dt>Confirms orders</dt>
+        <dd>
+          {perf.confirmHours === null
+            ? "Not yet confirmed online"
+            : perf.confirmHours < 1
+              ? "Within an hour"
+              : perf.confirmHours < 24
+                ? `In about ${Math.round(perf.confirmHours)} hours`
+                : `In about ${Math.round(perf.confirmHours / 24)} days`}
+        </dd>
+      </div>
+    </>
+  );
 }

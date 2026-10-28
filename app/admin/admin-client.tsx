@@ -968,7 +968,14 @@ function Overview() {
           <div className="alert-list">
             {a.length ? (
               a.slice(0, 7).map((x, i) => (
-                <a key={i} href={href(x.href)}>
+                <a
+                  key={i}
+                  href={
+                    x.href.includes("?")
+                      ? `${href(x.href.split("?")[0])}&${x.href.split("?")[1]}`
+                      : href(x.href)
+                  }
+                >
                   <AlertTriangle size={17} />
                   <div>
                     <b>{x.title}</b>

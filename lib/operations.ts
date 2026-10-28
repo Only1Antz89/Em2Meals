@@ -9,6 +9,7 @@ import {
   uid,
   money,
 } from "./domain";
+import { planningLead, supplierPerformance } from "./supplier-tracking";
 
 export const seasons = ["Spring", "Summer", "Autumn", "Winter"] as const;
 export const categories = [
@@ -218,7 +219,39 @@ export type PurchaseLine = {
   eventDate: string;
   eta: string;
   deadline: string;
+  // How the lead time was worked out, e.g. learned from past deliveries.
+  leadNote?: string;
+  // Set when the preferred supplier cannot deliver in time and a faster
+  // supplier was chosen instead.
+  switchedFrom?: string;
 };
+export type SupplierResponseLine = {
+  ingredientId: string;
+  status: "confirmed" | "changed" | "unavailable";
+  requested: number;
+  quantity: number;
+  cost: number;
+  note: string;
+};
+export type SupplierResponse = {
+  firstAt: string;
+  at: string;
+  firstDeliveryDate: string;
+  deliveryDate: string;
+  deliveryWindow: string;
+  contactName: string;
+  note: string;
+  lines: SupplierResponseLine[];
+  updates: number;
+};
+// Unguessable secret for a supplier's confirmation link.
+export function linkToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+}
 export type Proposal = {
   supplierId: string;
   lines: PurchaseLine[];
@@ -509,6 +542,96 @@ export function consumeOrder(
 }
 const shiftDate = (date: string, days: number) =>
   new Date(Date.parse(date) + days * 86400000).toISOString().slice(0, 10);
+type Source = {
+  offering?: Offering;
+  supplierId: string;
+  eta: string;
+  leadDays: number;
+  orderBuffer: number;
+  leadNote: string;
+  switchedFrom?: string;
+};
+// Pick who should supply an ingredient needed by a date. The preferred
+// supplier always wins when it can deliver in time. When it cannot, the
+// fastest other supplier that can make it is used instead (most reliable,
+// then cheapest, on a tie). If nobody can make it, the preferred supplier
+// stays and the line shows as late.
+type SupplierStats = {
+  lead: ReturnType<typeof planningLead>;
+  reliability: number;
+};
+export function sourceFor(
+  s: State,
+  ingredientId: string,
+  needBy: string,
+  cache = new Map<string, SupplierStats>(),
+): Source {
+  const now = today();
+  const stats = (supplierId: string) => {
+    let value = cache.get(supplierId);
+    if (!value) {
+      value = {
+        lead: planningLead(s, supplierId),
+        reliability: supplierPerformance(s, supplierId).onTimeRate ?? 0.5,
+      };
+      cache.set(supplierId, value);
+    }
+    return value;
+  };
+  const options = s.offerings
+    .filter(
+      (x) =>
+        x.ingredientId === ingredientId &&
+        s.suppliers.some((sup) => sup.id === x.supplierId),
+    )
+    .map((offering) => {
+      const { lead, reliability } = stats(offering.supplierId);
+      return {
+        offering,
+        supplierId: offering.supplierId,
+        eta: shiftDate(now, lead.days),
+        leadDays: lead.days,
+        orderBuffer: lead.orderBuffer,
+        leadNote: lead.note,
+        reliability,
+        unitCost:
+          offering.packCost === null
+            ? Infinity
+            : offering.packCost / offering.packQuantity,
+      };
+    });
+  const preferred = options.find((x) => x.offering.preferred);
+  const inTime = (x: (typeof options)[number]) => !needBy || x.eta <= needBy;
+  const pick = (x: (typeof options)[number], switchedFrom?: string): Source => ({
+    offering: x.offering,
+    supplierId: x.supplierId,
+    eta: x.eta,
+    leadDays: x.leadDays,
+    orderBuffer: x.orderBuffer,
+    leadNote: x.leadNote,
+    switchedFrom,
+  });
+  if (preferred && inTime(preferred)) return pick(preferred);
+  const fastest = options
+    .filter((x) => x !== preferred && x.supplierId !== preferred?.supplierId)
+    .sort(
+      (a, b) =>
+        a.eta.localeCompare(b.eta) ||
+        b.reliability - a.reliability ||
+        a.unitCost - b.unitCost,
+    );
+  const backup = fastest.find(inTime);
+  if (backup) return pick(backup, preferred?.supplierId);
+  if (preferred) return pick(preferred);
+  if (fastest[0]) return pick(fastest[0]);
+  return {
+    supplierId: "unassigned",
+    eta: now,
+    leadDays: 0,
+    orderBuffer: 0,
+    leadNote: "",
+  };
+}
 export function proposals(s: State): Proposal[] {
   const incoming = new Map(
     s.purchases
@@ -516,6 +639,7 @@ export function proposals(s: State): Proposal[] {
       .map((p) => [p.id, p.quantity - (p.receivedQuantity || 0)]),
   );
   const grouped = new Map<string, PurchaseLine[]>();
+  const cache = new Map<string, SupplierStats>();
   for (const o of s.orders
     .filter(active)
     .sort(
@@ -535,11 +659,9 @@ export function proposals(s: State): Proposal[] {
         incoming.set(p.id, (incoming.get(p.id) || 0) - take);
       }
       if (required < 1e-6) continue;
-      const offering = s.offerings.find(
-        (x) => x.ingredientId === ingredientId && x.preferred,
-      );
-      const supplier = s.suppliers.find((x) => x.id === offering?.supplierId);
-      const supplierId = supplier?.id || "unassigned",
+      const source = sourceFor(s, ingredientId, o.details.date, cache);
+      const offering = source.offering;
+      const supplierId = source.supplierId,
         lines = grouped.get(supplierId) || [];
       let line = lines.find((l) => l.ingredientId === ingredientId);
       if (!line) {
@@ -553,11 +675,13 @@ export function proposals(s: State): Proposal[] {
           vat: null,
           orderIds: [],
           eventDate: o.details.date,
-          eta: shiftDate(today(), supplier?.leadDays || 0),
+          eta: source.eta,
           deadline: shiftDate(
             o.details.date || today(),
-            -(supplier?.leadDays || 0),
+            -(source.leadDays + source.orderBuffer),
           ),
+          leadNote: source.leadNote,
+          ...(source.switchedFrom ? { switchedFrom: source.switchedFrom } : {}),
         };
         lines.push(line);
       }
@@ -777,6 +901,7 @@ export function applyOperations(
         supplierId: v.supplierId,
         at,
         proposal,
+        supplierLink: linkToken(),
       });
       return id;
     }
@@ -810,6 +935,8 @@ export function applyOperations(
         body: v.body,
         at,
         proposal,
+        // Keep the same supplier link so a shared link shows the update.
+        supplierLink: d.supplierLink || linkToken(),
         superseded: false,
         deliveryStatus: undefined,
         sentAt: undefined,
@@ -865,6 +992,9 @@ export function applyOperations(
           status: "ordered",
           notes: `Confirmed request ${d.id}`,
           at,
+          orderedOn: d.sentAt!.slice(0, 10),
+          promisedEta: v.eta,
+          confirmedVia: "kitchen",
           requestId: d.id,
           orderIds:
             d.proposal.lines.find(
@@ -874,6 +1004,31 @@ export function applyOperations(
         });
       d.purchaseConfirmed = true;
       return d.id;
+    }
+    case "supplier-response":
+      return supplierResponse(s, p, at);
+    case "delivery-feedback": {
+      const v = z
+        .object({
+          purchaseIds: z.array(short).min(1).max(100),
+          arrival: z.enum(["on-time", "early", "late", "short"]),
+          orderedInTime: z.enum(["yes", "tight", "no"]),
+          note: z.string().max(2000).default(""),
+        })
+        .parse(p);
+      const items = v.purchaseIds.map((id) =>
+        s.purchases.find((x) => x.id === id),
+      );
+      if (items.some((x) => !x || x.status !== "received"))
+        throw Error("Rate a delivery once it has been received");
+      for (const item of items)
+        item!.deliveryFeedback = {
+          arrival: v.arrival,
+          orderedInTime: v.orderedInTime,
+          note: v.note,
+          at,
+        };
+      return items[0]!.id;
     }
     case "invoice-edit": {
       const v = z
@@ -1020,4 +1175,135 @@ export function invoiceText(s: State, i: Invoice) {
     .join(
       "\n",
     )}\n\nNet: ${money(i.net)}\nVAT: ${money(i.vat)}\nTotal: ${money(i.total)}\n\n${i.paymentInstructions}`;
+}
+
+// The supplier's answer from their confirmation link. The first answer turns
+// the request into incoming purchases; later answers (for example a new
+// delivery date) update them until anything has been received.
+export const supplierResponseSchema = z.object({
+  token: z.string().min(20).max(100),
+  deliveryDate: dateValue,
+  deliveryWindow: z.string().max(80).default(""),
+  contactName: z.string().max(120).default(""),
+  note: z.string().max(2000).default(""),
+  lines: z
+    .array(
+      z.object({
+        ingredientId: short,
+        available: z.boolean(),
+        quantity,
+        cost: cents,
+        note: z.string().max(500).default(""),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+export function requestForLink(s: State, token: string) {
+  const matches = s.drafts.filter(
+    (d) => d.proposal && d.supplierLink && d.supplierLink === token,
+  );
+  return matches.find((d) => !d.superseded) || matches[0];
+}
+function supplierResponse(s: State, payload: unknown, at: string) {
+  const v = supplierResponseSchema.parse(payload);
+  const d = requestForLink(s, v.token);
+  if (!d?.proposal) throw Error("This order link is not valid.");
+  if (d.superseded && !d.purchaseConfirmed)
+    throw Error("This order was cancelled or replaced by the kitchen.");
+  if (d.purchaseConfirmed && !d.supplierResponse)
+    throw Error(
+      "The kitchen has already recorded this order. Contact them to make changes.",
+    );
+  const existing = s.purchases.filter((x) => x.requestId === d.id);
+  if (existing.some((x) => (x.receivedQuantity || 0) > 0))
+    throw Error(
+      "This delivery has already been received. Contact the kitchen to make changes.",
+    );
+  if (v.deliveryDate < today())
+    throw Error("Choose a delivery date from today onwards.");
+  const requested = d.proposal.lines;
+  if (
+    v.lines.length !== requested.length ||
+    new Set(v.lines.map((l) => l.ingredientId)).size !== v.lines.length ||
+    v.lines.some(
+      (l) => !requested.some((r) => r.ingredientId === l.ingredientId),
+    )
+  )
+    throw Error("Answer every item on the order once.");
+  if (v.lines.some((l) => l.available && l.quantity <= 0))
+    throw Error("Enter the quantity you can deliver, or mark it unavailable.");
+  const first = d.supplierResponse;
+  const firstDeliveryDate = first?.firstDeliveryDate || v.deliveryDate;
+  const lines = v.lines.map((l) => {
+    const r = requested.find((x) => x.ingredientId === l.ingredientId)!;
+    return {
+      ingredientId: l.ingredientId,
+      requested: r.quantity,
+      quantity: l.available ? l.quantity : 0,
+      cost: l.available ? l.cost : 0,
+      note: l.note,
+      status: !l.available
+        ? ("unavailable" as const)
+        : Math.abs(l.quantity - r.quantity) > 1e-9
+          ? ("changed" as const)
+          : ("confirmed" as const),
+    };
+  });
+  for (const line of lines) {
+    const purchase = existing.find((x) => x.ingredientId === line.ingredientId);
+    if (line.status === "unavailable") {
+      if (!purchase) continue;
+      if (s.finance.some((f) => f.purchaseId === purchase.id))
+        throw Error(
+          "A payment is recorded against this order. Contact the kitchen to remove items.",
+        );
+      s.purchases = s.purchases.filter((x) => x.id !== purchase.id);
+      continue;
+    }
+    const fields = {
+      quantity: line.quantity,
+      cost: line.cost,
+      eta: v.deliveryDate,
+      promisedEta: firstDeliveryDate,
+      deliveryWindow: v.deliveryWindow,
+      notes: line.note || "Confirmed by supplier",
+    };
+    if (purchase) Object.assign(purchase, fields);
+    else
+      s.purchases.push({
+        id: uid(),
+        supplierId: d.supplierId!,
+        ingredientId: line.ingredientId,
+        ...fields,
+        status: "ordered",
+        at,
+        orderedOn: (d.sentAt || d.at).slice(0, 10),
+        confirmedVia: "supplier-link",
+        requestId: d.id,
+        orderIds:
+          requested.find((r) => r.ingredientId === line.ingredientId)
+            ?.orderIds || [],
+        receivedQuantity: 0,
+      });
+  }
+  d.supplierResponse = {
+    firstAt: first?.firstAt || at,
+    at,
+    firstDeliveryDate,
+    deliveryDate: v.deliveryDate,
+    deliveryWindow: v.deliveryWindow,
+    contactName: v.contactName,
+    note: v.note,
+    lines,
+    updates: first ? first.updates + 1 : 0,
+  };
+  d.purchaseConfirmed = true;
+  const supplier = s.suppliers.find((x) => x.id === d.supplierId);
+  if (supplier)
+    supplier.comms.push({
+      at,
+      message: `${first ? "Updated" : "Confirmed"} order online: delivery ${v.deliveryDate}${v.deliveryWindow ? ` (${v.deliveryWindow})` : ""}${lines.some((l) => l.status !== "confirmed") ? ` · ${lines.filter((l) => l.status !== "confirmed").length} item(s) changed or unavailable` : ""}${v.note ? ` · ${v.note}` : ""}`,
+    });
+  return d.id;
 }

@@ -8,18 +8,21 @@ import { z } from "zod";
 import { recallCommand } from "./recalls";
 import { type Menu, menuCommand } from "./menu";
 import { privacyCommand } from "./privacy";
+import { type DeliveryFeedback, awaitingFeedback } from "./supplier-tracking";
 import {
   type OperationsState,
   type Place,
   type Research,
   type Usage,
   type Proposal,
+  type SupplierResponse,
   normaliseState,
   nextReference,
   reconcileStock,
   consumeOrder,
   invoiceDraft,
   applyOperations,
+  proposals,
   tax,
   categories,
   seasons,
@@ -326,6 +329,15 @@ export type State = OperationsState & {
     at?: string;
     receivedQuantity?: number;
     requestId?: string;
+    // Date the order was placed, the first delivery date the supplier
+    // promised, and the date it was fully received. Used to learn real
+    // supplier lead times.
+    orderedOn?: string;
+    promisedEta?: string;
+    receivedOn?: string;
+    deliveryWindow?: string;
+    confirmedVia?: "supplier-link" | "kitchen";
+    deliveryFeedback?: DeliveryFeedback;
     id: string;
     supplierId: string;
     ingredientId: string;
@@ -394,6 +406,9 @@ export type State = OperationsState & {
   })[];
   drafts: {
     proposal?: Proposal;
+    // Secret for the supplier's no-login confirmation page.
+    supplierLink?: string;
+    supplierResponse?: SupplierResponse;
     sentAt?: string;
     deliveryStatus?: "sending" | "uncertain" | "failed" | "sent";
     superseded?: boolean;
@@ -738,8 +753,54 @@ export function alerts(s: State) {
       a.push({
         title: "Supplier delivery overdue",
         detail: s.suppliers.find((x) => x.id === p.supplierId)?.name || "",
-        href: "suppliers",
+        href: "business?tab=purchasing",
       });
+  // Shortages whose order-by date has arrived and that have no open request.
+  for (const p of proposals(s)) {
+    const supplier = s.suppliers.find((x) => x.id === p.supplierId);
+    if (
+      !supplier ||
+      s.drafts.some(
+        (d) =>
+          d.supplierId === p.supplierId &&
+          d.proposal &&
+          !d.superseded &&
+          !d.purchaseConfirmed,
+      )
+    )
+      continue;
+    const due = p.lines.filter((l) => l.deadline <= today());
+    if (due.length)
+      a.push({
+        title: `Order from ${supplier.name} now`,
+        detail: due
+          .map(
+            (l) => s.ingredients.find((i) => i.id === l.ingredientId)?.name,
+          )
+          .join(", "),
+        href: "business?tab=purchasing",
+      });
+  }
+  for (const d of s.drafts)
+    if (
+      d.supplierResponse?.lines.some((l) => l.status !== "confirmed") &&
+      !s.purchases.some(
+        (p) => p.requestId === d.id && (p.receivedQuantity || 0) > 0,
+      ) &&
+      d.supplierResponse.deliveryDate >= today()
+    )
+      a.push({
+        title: `${s.suppliers.find((x) => x.id === d.supplierId)?.name || "Supplier"} changed your order`,
+        detail: `${d.supplierResponse.lines.filter((l) => l.status !== "confirmed").length} item(s) changed or unavailable`,
+        href: "business?tab=purchasing",
+      });
+  const unrated = awaitingFeedback(s).length;
+  if (unrated)
+    a.push({
+      title: "Rate recent deliveries",
+      detail: `${unrated} delivered order${unrated === 1 ? "" : "s"} · helps Em2 learn supplier lead times`,
+      href: "business?tab=purchasing",
+    });
   for (const o of s.orders)
     if (
       !["delivered", "cancelled", "declined"].includes(o.status) &&
@@ -1374,6 +1435,7 @@ export function applyCommand(
           );
         po.receivedQuantity = (po.receivedQuantity || 0) + v.quantity;
         po.status = po.receivedQuantity >= po.quantity ? "received" : "ordered";
+        if (po.status === "received") po.receivedOn = v.intake;
       }
       target = id;
       break;
@@ -1474,6 +1536,9 @@ export function applyCommand(
         id: uid(),
         status: "ordered",
         at,
+        orderedOn: today(),
+        promisedEta: v.eta,
+        confirmedVia: "kitchen",
         receivedQuantity: 0,
       });
       break;

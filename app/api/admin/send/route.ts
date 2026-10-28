@@ -8,7 +8,8 @@ import {
   loadState,
   commitStateAndDelivery,
 } from "@/lib/server";
-import { draftCurrent } from "@/lib/operations";
+import { draftCurrent, linkToken } from "@/lib/operations";
+import { supplierLinkText } from "@/lib/supplier-link";
 import {
   EmailDeliveryUncertain,
   emailProvider,
@@ -76,13 +77,19 @@ export async function POST(req: Request) {
       .run();
     if (sendClaim.meta.changes !== 1)
       throw Error("Email already claimed; reload its delivery status");
+    // Supplier requests carry a link where the supplier can confirm the
+    // order, change quantities and set a delivery date without an account.
+    if (draft.proposal) draft.supplierLink ||= linkToken();
+    const text = draft.proposal
+      ? `${draft.body}\n\n${supplierLinkText(new URL(req.url).origin, draft.supplierLink!)}`
+      : draft.body;
     try {
       const result = await sendEmail({
         provider,
         sender: c.EMAIL_FROM,
         to: [draft.to],
         subject: draft.subject,
-        text: draft.body,
+        text,
       });
       draft.sentAt = at;
       let nextRevision: number;

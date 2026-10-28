@@ -2,7 +2,9 @@
 import Image from "next/image";
 import { useState } from "react";
 import { useOps } from "./ops-context";
-import { Panel, GridTable, Tag, Drafts } from "./admin-client";
+import { Panel, GridTable, Tag, Drafts, stockEditor } from "./admin-client";
+import { awaitingFeedback, type Delivery } from "@/lib/supplier-tracking";
+import { supplierLinkPath } from "@/lib/supplier-link";
 import { Button } from "@/components/ui/button";
 import { Field, Pick, Notes } from "@/components/form-controls";
 import { money, today, type State } from "@/lib/domain";
@@ -30,10 +32,41 @@ function proposalEmail(s: State, p: Proposal) {
     })
     .join(
       "\n",
-    )}\n\nEstimated delivery charge: ${money(p.delivery)}. Estimated total: ${p.total === null ? "incomplete — pricing/VAT to confirm" : money(p.total)}. Please confirm prices, VAT and delivery dates. This request is not yet a confirmed purchase.\n\nThank you,\nFork Goodness Baked`;
+    )}\n\nEstimated delivery charge: ${money(p.delivery)}. Estimated total: ${p.total === null ? "incomplete — pricing/VAT to confirm" : money(p.total)}. Please use the link below to confirm quantities, prices and your delivery date, or reply to this email. This request is not yet a confirmed purchase.\n\nThank you,\nFork Goodness Baked`;
 }
 export default function Business({ tab }: { tab: string }) {
-  const { s, run, open, href, busy } = useOps();
+  const { s, run, open, href, busy, mode } = useOps();
+  const [rating, setRating] = useState<{
+      delivery: Delivery;
+      arrival: string;
+      orderedInTime: string;
+      note: string;
+    } | null>(null),
+    [copied, setCopied] = useState("");
+  const supplierName = (id?: string) =>
+    s.suppliers.find((x) => x.id === id)?.name || "Supplier";
+  const ingredientName = (id: string) =>
+    s.ingredients.find((i) => i.id === id)?.name || "Item";
+  const incoming = [
+    ...s.purchases
+      .filter((p) => p.status === "ordered")
+      .reduce((groups, p) => {
+        const key = p.requestId || p.id;
+        groups.set(key, [...(groups.get(key) || []), p]);
+        return groups;
+      }, new Map<string, State["purchases"]>())
+      .values(),
+  ].sort((a, b) => a[0].eta.localeCompare(b[0].eta));
+  const toRate = awaitingFeedback(s);
+  async function copyLink(token: string) {
+    const url = `${window.location.origin}${supplierLinkPath(token)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(token);
+    } catch {
+      window.prompt("Copy the supplier link", url);
+    }
+  }
   const [error, setError] = useState(""),
     [draft, setDraft] = useState<{
       proposal: Proposal;
@@ -135,6 +168,9 @@ export default function Business({ tab }: { tab: string }) {
                         `${l.cost === null ? "Unknown" : money(l.cost)} / ${l.vat === null ? "VAT unknown" : money(l.vat)}`,
                         <span key="cell-4">
                           Order by {l.deadline}
+                          {l.deadline < today() && l.eta <= l.eventDate && (
+                            <Tag tone="amber">Order now</Tag>
+                          )}
                           <small className="subtext">
                             ETA {l.eta}{" "}
                             <Tag tone={l.eta > l.eventDate ? "red" : ""}>
@@ -143,6 +179,16 @@ export default function Business({ tab }: { tab: string }) {
                                 : "Estimated"}
                             </Tag>
                           </small>
+                          {l.leadNote && (
+                            <small className="subtext">{l.leadNote}</small>
+                          )}
+                          {l.switchedFrom && (
+                            <small className="subtext">
+                              {supplierName(l.switchedFrom)} can&apos;t deliver
+                              before {l.eventDate}, so this is the fastest
+                              supplier that can.
+                            </small>
+                          )}
                         </span>,
                       ];
                     })}
@@ -189,21 +235,63 @@ export default function Business({ tab }: { tab: string }) {
                   const current = draftCurrent(s, d);
                   return [
                     s.suppliers.find((x) => x.id === d.supplierId)?.name,
-                    <Tag
-                      key="cell-1"
-                      tone={
-                        d.purchaseConfirmed ? "green" : !current ? "amber" : ""
-                      }
-                    >
-                      {d.purchaseConfirmed
-                        ? "Purchase confirmed"
-                        : d.sentAt
-                          ? "Sent — awaiting supplier"
-                          : current
-                            ? "Reviewed draft"
-                            : "Needs updating"}
-                    </Tag>,
-                    !current ? (
+                    <span key="cell-1">
+                      <Tag
+                        tone={
+                          d.purchaseConfirmed
+                            ? d.supplierResponse?.lines.some(
+                                (l) => l.status !== "confirmed",
+                              )
+                              ? "amber"
+                              : "green"
+                            : !current
+                              ? "amber"
+                              : ""
+                        }
+                      >
+                        {d.supplierResponse
+                          ? d.supplierResponse.lines.every(
+                              (l) => l.status === "unavailable",
+                            )
+                            ? "Supplier can't supply"
+                            : "Confirmed by supplier"
+                          : d.purchaseConfirmed
+                            ? "Purchase confirmed"
+                            : d.sentAt
+                              ? "Sent — awaiting supplier"
+                              : current
+                                ? "Reviewed draft"
+                                : "Needs updating"}
+                      </Tag>
+                      {d.supplierResponse && (
+                        <small className="subtext">
+                          Delivery {d.supplierResponse.deliveryDate}
+                          {d.supplierResponse.deliveryWindow &&
+                          d.supplierResponse.deliveryWindow !== "Any time"
+                            ? ` · ${d.supplierResponse.deliveryWindow}`
+                            : ""}
+                        </small>
+                      )}
+                      {d.supplierResponse?.lines
+                        .filter((l) => l.status !== "confirmed")
+                        .map((l) => (
+                          <small className="subtext" key={l.ingredientId}>
+                            {ingredientName(l.ingredientId)}:{" "}
+                            {l.status === "unavailable"
+                              ? "not available"
+                              : `${+l.quantity.toFixed(2)} instead of ${+l.requested.toFixed(2)}`}
+                            {l.note ? ` · ${l.note}` : ""}
+                          </small>
+                        ))}
+                      {d.supplierResponse?.note && (
+                        <small className="subtext">
+                          “{d.supplierResponse.note}”
+                        </small>
+                      )}
+                    </span>,
+                    d.purchaseConfirmed ? (
+                      "Ordered"
+                    ) : !current ? (
                       <span>
                         {d.proposal!.lines.map((old) => {
                           const next = p?.lines.find(
@@ -247,6 +335,23 @@ export default function Business({ tab }: { tab: string }) {
                       "Matches current demand"
                     ),
                     <div key="cell-3" className="inline-actions">
+                      {mode === "live" &&
+                        d.supplierLink &&
+                        !s.purchases.some(
+                          (x) =>
+                            x.requestId === d.id && (x.receivedQuantity || 0) > 0,
+                        ) &&
+                        (!d.purchaseConfirmed || d.supplierResponse) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => copyLink(d.supplierLink!)}
+                          >
+                            {copied === d.supplierLink
+                              ? "Link copied"
+                              : "Copy supplier link"}
+                          </Button>
+                        )}
                       {!d.sentAt && p && !d.purchaseConfirmed && (
                         <Button size="sm" onClick={() => prepare(p, d.id)}>
                           Edit / refresh draft
@@ -293,10 +398,115 @@ export default function Business({ tab }: { tab: string }) {
                 })}
             />
             <p className="panel-note">
-              Sent requests are retained. Record only quantities the supplier
-              has confirmed. Additional shortages then appear as a new request.
-              If a sent request needs replacing, confirm its cancellation with
-              the supplier before closing it.
+              Each supplier email includes a link where the supplier confirms
+              quantities, prices and the delivery date themselves. You can also
+              copy the link and send it by text or WhatsApp. If they confirm by
+              phone instead, record it here. Additional shortages then appear
+              as a new request. If a sent request needs replacing, confirm its
+              cancellation with the supplier before closing it.
+            </p>
+          </Panel>
+          <Panel title="Incoming deliveries">
+            <GridTable
+              heads={["Supplier", "Items", "Delivery", ""]}
+              rows={incoming.map((group) => {
+                const first = group[0];
+                const overdue = first.eta < today();
+                return [
+                  <span key="supplier">
+                    {supplierName(first.supplierId)}
+                    <small className="subtext">
+                      {first.confirmedVia === "supplier-link"
+                        ? "Confirmed by supplier online"
+                        : "Recorded by the kitchen"}
+                    </small>
+                  </span>,
+                  <span key="items">
+                    {group.map((p) => {
+                      const unit = s.ingredients.find(
+                        (i) => i.id === p.ingredientId,
+                      )?.unit;
+                      return (
+                        <small className="subtext" key={p.id}>
+                          {ingredientName(p.ingredientId)}:{" "}
+                          {+(p.quantity - (p.receivedQuantity || 0)).toFixed(2)}{" "}
+                          {unit}
+                          {p.receivedQuantity ? " still to come" : ""}
+                        </small>
+                      );
+                    })}
+                  </span>,
+                  <span key="eta">
+                    {first.eta}
+                    {first.deliveryWindow &&
+                    first.deliveryWindow !== "Any time"
+                      ? ` · ${first.deliveryWindow}`
+                      : ""}{" "}
+                    <Tag tone={overdue ? "red" : first.eta === today() ? "amber" : ""}>
+                      {overdue ? "Overdue" : first.eta === today() ? "Today" : "On the way"}
+                    </Tag>
+                    {first.promisedEta && first.promisedEta !== first.eta && (
+                      <small className="subtext">
+                        First promised for {first.promisedEta}
+                      </small>
+                    )}
+                  </span>,
+                  <div key="actions" className="inline-actions">
+                    {group.map((p) => (
+                      <Button
+                        key={p.id}
+                        size="sm"
+                        onClick={() => open(stockEditor(s, p))}
+                      >
+                        Receive {group.length > 1 ? ingredientName(p.ingredientId) : ""}
+                      </Button>
+                    ))}
+                  </div>,
+                ];
+              })}
+              empty="Nothing on the way. Confirmed orders appear here with their delivery date."
+            />
+            {toRate.length > 0 && (
+              <>
+                <p className="panel-note">
+                  <strong>How did these deliveries go?</strong> Rate each one
+                  so Em2 learns how reliable the supplier is.
+                </p>
+                <GridTable
+                  heads={["Supplier", "Ordered", "Promised", "Received", ""]}
+                  rows={toRate.map((d) => [
+                    supplierName(d.supplierId),
+                    d.orderedOn,
+                    d.promisedOn,
+                    d.receivedOn,
+                    <Button
+                      key="rate"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setRating({
+                          delivery: d,
+                          arrival:
+                            d.receivedOn > d.promisedOn
+                              ? "late"
+                              : d.receivedOn < d.promisedOn
+                                ? "early"
+                                : "on-time",
+                          orderedInTime: "yes",
+                          note: "",
+                        })
+                      }
+                    >
+                      Rate delivery
+                    </Button>,
+                  ])}
+                />
+              </>
+            )}
+            <p className="panel-note">
+              Your answers teach Em2 how long each supplier really takes, so
+              order-by dates and supplier suggestions get more accurate over
+              time.
             </p>
           </Panel>
         </>
@@ -556,6 +766,72 @@ export default function Business({ tab }: { tab: string }) {
               ))}
               {error && <p role="alert">{error}</p>}
               <Button disabled={busy}>Record confirmed purchase</Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!rating}
+        onOpenChange={(v) => {
+          if (!v) setRating(null);
+        }}
+      >
+        <DialogContent className="editor-dialog">
+          <DialogHeader>
+            <DialogTitle>
+              Rate delivery from {supplierName(rating?.delivery.supplierId)}
+            </DialogTitle>
+            <DialogDescription>
+              Promised for {rating?.delivery.promisedOn}, received{" "}
+              {rating?.delivery.receivedOn}.
+            </DialogDescription>
+          </DialogHeader>
+          {rating && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await run("delivery-feedback", {
+                    purchaseIds: rating.delivery.purchaseIds,
+                    arrival: rating.arrival,
+                    orderedInTime: rating.orderedInTime,
+                    note: rating.note,
+                  });
+                  setRating(null);
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+            >
+              <Pick
+                label="Did it arrive when the supplier promised?"
+                value={rating.arrival}
+                options={[
+                  { value: "on-time", label: "Yes, on time" },
+                  { value: "early", label: "Early" },
+                  { value: "late", label: "Late" },
+                  { value: "short", label: "Items missing or short" },
+                ]}
+                onChange={(arrival) => setRating({ ...rating, arrival })}
+              />
+              <Pick
+                label="Was it ordered in time for the event?"
+                value={rating.orderedInTime}
+                options={[
+                  { value: "yes", label: "Yes, plenty of time" },
+                  { value: "tight", label: "Only just" },
+                  { value: "no", label: "No, it was too late" },
+                ]}
+                onChange={(orderedInTime) =>
+                  setRating({ ...rating, orderedInTime })
+                }
+              />
+              <Notes
+                label="Anything else? (optional)"
+                value={rating.note}
+                onChange={(note) => setRating({ ...rating, note })}
+              />
+              <Button disabled={busy}>Save feedback</Button>
             </form>
           )}
         </DialogContent>

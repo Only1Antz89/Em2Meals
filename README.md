@@ -63,7 +63,7 @@ Use **Vercel project environment variables** for production values; local `.env`
 
 Google services require a configured project, enabled APIs and billing as applicable. SMTP2GO requires a verified sender and an API key permitted to call `/email/send`. Configure budget controls and appropriate API restrictions with the provider. Secrets are not entered in browser forms. Redeploy after changing runtime variables. Until configured, the app reports **Setup required**, preserves saved records and supports manual review/route estimates/email drafts.
 
-Complete kitchen address, measured UK MPG, current fuel price, VAT settings and thresholds in Settings. Vehicle defaults to 2018 Hyundai Tucson petrol without an assumed fuel economy. Quote VAT is configurable and is not tax advice or automated classification. No payment processor, bank connection, tax filing, customer account or automated supplier ordering is included.
+Complete kitchen address, measured UK MPG, current fuel price, VAT settings and thresholds in Settings. Vehicle defaults to 2018 Hyundai Tucson petrol without an assumed fuel economy. Quote VAT is configurable and is not tax advice or automated classification. No payment processor, bank connection, tax filing or customer account is included. Suppliers confirm requests through a private no-login link; orders are not placed automatically.
 
 ## Application and data flow
 

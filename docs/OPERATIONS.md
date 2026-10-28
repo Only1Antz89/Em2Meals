@@ -26,6 +26,14 @@ Business → Purchasing combines accepted-order shortages per supplier. Confirme
 
 Review and edit supplier drafts before sending. Changes to demand, stock, offerings or incoming purchases mark a draft Needs updating; review its differences and regenerate it. The server verifies freshness again while holding a workspace send lease. Network-uncertain deliveries require checking the provider and recording the result. A sent request is not a confirmed purchase. Confirm supplier quantities, cost and ETA, or record a manual purchase, then receive the actual delivery. Subsequent demand becomes a new or amended request after resolving the previous request.
 
+### Supplier confirmation links
+
+Every supplier request has a private link (`/supplier/orders/<token>`). Sent emails include it automatically, and Business → Purchasing can copy it for text or WhatsApp. The supplier needs no account: they mark each item available or not, adjust packs and the line price, and pick a delivery date and time. The first answer turns the request into incoming purchases; later answers update them until anything is received. The page shows only the kitchen name, items, quantities and dates, never customers or order references. Owners get an email when a supplier answers (when email is configured). Confirmations by phone are still recorded by hand.
+
+### Delivery tracking and supplier suggestions
+
+Each purchase keeps when it was ordered, the first delivery date promised and when it was fully received. After a delivery, Purchasing asks two questions: did it arrive when promised, and was it ordered in time. After two finished deliveries, a supplier's real typical lead time replaces their stated one, with extra days when they are on time less than 80% of the time, and order-by dates move a day earlier when recent orders were too tight. Proposals stay with the preferred supplier whenever it can deliver before the event. Only when it cannot does an ingredient move to the fastest other supplier that can (most reliable, then cheapest, on a tie), and the line says why. Order-by reminders, supplier changes and deliveries to rate appear under Needs your attention.
+
 ## Invoices and cost records
 
 Acceptance creates an invoice draft from the accepted quote. Complete business identity/address, billing address, dates and payment instructions. Where VAT is charged, complete registration details and review explicit rates. Inclusive/exclusive entry uses shared integer-penny rounding. Issue freezes the document and allocates an independent invoice number. Corrections use linked, separately numbered credit notes. Print/save PDF and email sending are explicit actions.

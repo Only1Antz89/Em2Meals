@@ -8263,3 +8263,210 @@ h2,
 .venue-kerb li.is-limited .venue-kerb-dot { background: #e0a443; }
 .venue-kerb li.is-loading .venue-kerb-dot { background: #2b6cb0; }
 .venue-kerb li.is-no .venue-kerb-dot { background: #d0453a; }
+
+/* Supplier order confirmation page (public, opened from a link). */
+.supplier-order {
+  min-height: 100vh;
+  background: #f7f7f2;
+  color: #203744;
+  padding: 32px 16px 64px;
+}
+.supplier-order-card {
+  max-width: 720px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #e1e2da;
+  border-radius: 8px;
+  padding: 28px;
+  display: grid;
+  gap: 24px;
+}
+.supplier-order-kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #657174;
+}
+.supplier-order-header h1,
+.supplier-order-card > h1 {
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  line-height: 1.15;
+  margin: 8px 0 18px;
+}
+.supplier-order-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.supplier-order-facts div {
+  background: #f7f7f2;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.supplier-order-facts dt {
+  font-size: 0.75rem;
+  color: #657174;
+}
+.supplier-order-facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+.supplier-order-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.supplier-order-lines li {
+  border: 1px solid #e1e2da;
+  border-radius: 6px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+.supplier-order-lines li.is-unavailable {
+  background: #faf6f0;
+}
+.supplier-order-line-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.supplier-order-line-head strong {
+  display: block;
+  font-size: 1.05rem;
+}
+.supplier-order-line-head span {
+  font-size: 0.875rem;
+  color: #657174;
+}
+.supplier-order-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  min-height: 44px;
+}
+.supplier-order-toggle input {
+  width: 20px;
+  height: 20px;
+}
+.supplier-order-inputs,
+.supplier-order-delivery {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.supplier-order-delivery {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.supplier-order-delivery legend {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+}
+.supplier-order label:not(.supplier-order-toggle) {
+  display: grid;
+  gap: 6px;
+  font-size: 0.875rem;
+  min-width: 0;
+}
+.supplier-order input:not([type="checkbox"]),
+.supplier-order select,
+.supplier-order textarea {
+  font: inherit;
+  font-size: 1rem;
+  min-height: 44px;
+  border: 1px solid #cbd3d0;
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: #fff;
+  color: inherit;
+  width: 100%;
+}
+.supplier-order-wide {
+  grid-column: 1 / -1;
+}
+.supplier-order-primary,
+.supplier-order-secondary {
+  font: inherit;
+  min-height: 48px;
+  border-radius: 6px;
+  padding: 0 20px;
+  cursor: pointer;
+}
+.supplier-order-primary {
+  background: #203744;
+  color: #fff;
+  border: 0;
+  font-weight: 600;
+}
+.supplier-order-primary:disabled {
+  opacity: 0.6;
+}
+.supplier-order-secondary {
+  background: #fff;
+  color: #203744;
+  border: 1px solid #203744;
+  justify-self: start;
+}
+.supplier-order-message {
+  background: #eef5ef;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 0;
+}
+.supplier-order-warning,
+.supplier-order-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+.supplier-order-warning {
+  background: #fdf3e1;
+}
+.supplier-order-error {
+  background: #fbe9e7;
+  color: #8a1f11;
+}
+.supplier-order-summary ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+.supplier-order-summary li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #eceee8;
+  padding-bottom: 8px;
+}
+.supplier-order-small {
+  font-size: 0.8rem;
+  color: #657174;
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .supplier-order-card {
+    padding: 18px;
+  }
+  .supplier-order-inputs,
+  .supplier-order-delivery {
+    grid-template-columns: 1fr;
+  }
+  .supplier-order-facts {
+    gap: 8px;
+  }
+  .supplier-order-facts div {
+    padding: 8px 10px;
+  }
+}

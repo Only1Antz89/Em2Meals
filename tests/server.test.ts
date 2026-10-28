@@ -1020,3 +1020,110 @@ test("AutoSous rejects proposals that would fail and reports setup errors", asyn
     delete env.GEMINI_API_KEY;
   }
 });
+test("supplier link: email carries it, supplier confirms without an account", async () => {
+  resetDB();
+  const { applyCommand, today } = await import("../lib/domain");
+  const { proposals } = await import("../lib/operations");
+  const { POST: respond } = await import(
+    "../app/api/supplier/orders/[token]/route"
+  );
+  let s = emptyState();
+  const act = (type: string, payload: unknown) =>
+    (s = applyCommand(s, { id: crypto.randomUUID(), type, payload }, "owner"));
+  act("supplier", {
+    id: "sup",
+    name: "Test supplier",
+    email: "supplier@example.com",
+    phone: "",
+    deliveryCharge: 0,
+    minimumOrder: 0,
+    leadDays: 1,
+    notes: "",
+  });
+  act("ingredient", {
+    id: "rice",
+    name: "Rice",
+    category: "carbohydrates",
+    unit: "g",
+    packQuantity: 500,
+    packCost: 200,
+    yield: 1,
+    allergens: "None",
+    supplierId: "sup",
+    threshold: 0,
+  });
+  act("recipe", {
+    id: "dish",
+    name: "Rice bowl",
+    variant: "Standard",
+    lines: [{ ingredientId: "rice", quantity: 100 }],
+    collections: [{ year: 2026, season: "Autumn" }],
+  });
+  const date = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+  act("order", {
+    orderId: "o",
+    details: { ...details, date, address: "1 Test Road", venue: "Office" },
+    items: [{ recipeId: "dish", quantity: 5 }],
+  });
+  act("quote", { orderId: "o", net: 10000, notes: "" });
+  act("allergy-review", { orderId: "o", requirements: [] });
+  act("stage", { orderId: "o", status: "confirmed" });
+  const proposal = proposals(s)[0];
+  act("procurement-draft", {
+    supplierId: "sup",
+    to: "supplier@example.com",
+    subject: "Order",
+    body: "500g rice",
+    fingerprint: proposal.fingerprint,
+  });
+  save(s);
+  const token = s.drafts[0].supplierLink!;
+  const originalFetch = globalThis.fetch;
+  let sentText = "";
+  globalThis.fetch = async (_url, init) => {
+    sentText = JSON.parse(String(init?.body)).text_body || "";
+    return Response.json({
+      request_id: "r",
+      data: { succeeded: 1, failed: 0, failures: [], email_id: "e" },
+    });
+  };
+  try {
+    const sent = await send(req({ draftId: s.drafts[0].id, confirm: true }));
+    assert.equal(sent.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.match(sentText, /500g rice/);
+  assert.ok(
+    sentText.includes(`http://localhost/supplier/orders/${token}`),
+    "The email links to the supplier page",
+  );
+  const body = {
+    deliveryDate: today(),
+    deliveryWindow: "Any time",
+    lines: [
+      { ingredientId: "rice", available: true, quantity: 500, cost: 210 },
+    ],
+  };
+  const call = (t: string, headers: Record<string, string> = { Origin: "http://localhost" }) =>
+    respond(
+      new Request(`http://localhost/api/supplier/orders/${t}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ token: t }) },
+    );
+  assert.equal((await call(token, {})).status, 400, "Cross-site posts fail");
+  assert.equal((await call("z".repeat(32))).status, 400);
+  const ok = await call(token);
+  const result = (await ok.json()) as { view: { status: string } };
+  assert.equal(ok.status, 200, JSON.stringify(result));
+  assert.equal(result.view.status, "confirmed");
+  assert.ok(!JSON.stringify(result).includes("customer@example.com"));
+  const { state } = await loadState();
+  assert.equal(state.purchases.length, 1);
+  assert.equal(state.purchases[0].cost, 210);
+  assert.equal(state.purchases[0].confirmedVia, "supplier-link");
+  assert.match(state.audit.at(-1)!.actor, /^supplier:Test supplier$/);
+});

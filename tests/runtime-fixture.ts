@@ -3,12 +3,14 @@ import { readFileSync } from "node:fs";
 export const sqlite = new DatabaseSync(":memory:");
 export function resetDB() {
   sqlite.exec(
-    "DROP TABLE IF EXISTS workspaces; DROP TABLE IF EXISTS enquiries; DROP TABLE IF EXISTS rate_limits; DROP TABLE IF EXISTS email_deliveries; DROP TABLE IF EXISTS workspace_backups; DROP TABLE IF EXISTS enquiry_imports; DROP TABLE IF EXISTS research_cache; DROP TABLE IF EXISTS workspace_send_locks; DROP TABLE IF EXISTS crm_digest_deliveries;",
+    "DROP TABLE IF EXISTS workspaces; DROP TABLE IF EXISTS enquiries; DROP TABLE IF EXISTS rate_limits; DROP TABLE IF EXISTS email_deliveries; DROP TABLE IF EXISTS workspace_backups; DROP TABLE IF EXISTS enquiry_imports; DROP TABLE IF EXISTS research_cache; DROP TABLE IF EXISTS workspace_send_locks; DROP TABLE IF EXISTS crm_digest_deliveries; DROP TABLE IF EXISTS team_members; DROP TABLE IF EXISTS access_events;",
   );
   sqlite.exec(readFileSync("drizzle/0000_gorgeous_xorn.sql", "utf8"));
   sqlite.exec(readFileSync("drizzle/0001_operations.sql", "utf8"));
   sqlite.exec(readFileSync("drizzle/0002_crm.sql", "utf8"));
   sqlite.exec(readFileSync("drizzle/0003_hardening.sql", "utf8"));
+  sqlite.exec(readFileSync("drizzle/0004_team_access.sql", "utf8"));
+  testUser = { ...defaultUser };
 }
 class Statement {
   values: (string | number | null)[] = [];
@@ -54,6 +56,19 @@ export const env: Record<string, unknown> = {
 };
 globalThis.__EM2_TEST_ENV__ = env;
 globalThis.__EM2_TEST_DB__ = env.DB as typeof globalThis.__EM2_TEST_DB__;
+const defaultUser = {
+  email: "owner@example.com",
+  userId: "test-owner",
+  displayName: "owner@example.com",
+  fullName: null as string | null,
+};
+let testUser: typeof defaultUser | null = { ...defaultUser };
+// Signs the tests in as someone else (or nobody) until the next resetDB().
+export function signInAs(email: string | null) {
+  testUser = email
+    ? { email, userId: `test-${email}`, displayName: email, fullName: null }
+    : null;
+}
 export async function getChatGPTUser() {
-  return { email: "owner@example.com", userId: "test-owner" };
+  return testUser;
 }

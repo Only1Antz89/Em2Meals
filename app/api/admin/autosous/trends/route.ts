@@ -1,4 +1,4 @@
-import { owner, sameOrigin, jsonBody, errorResponse, database } from "@/lib/server";
+import { requireAccess, sameOrigin, jsonBody, errorResponse, database } from "@/lib/server";
 import { gemini } from "@/lib/integrations";
 import { currentSeason } from "@/lib/menu";
 import { rateLimit } from "@/lib/upgrade-server";
@@ -10,8 +10,7 @@ export const maxDuration = 60;
 // so it costs one search-grounded request per week.
 export async function POST(req: Request) {
   try {
-    if (!(await owner()))
-      return errorResponse(Error("Owner access required"), 403);
+    await requireAccess("view");
     sameOrigin(req);
     const p = z
       .object({ mode: z.enum(["sample", "live"]), refresh: z.boolean().optional() })

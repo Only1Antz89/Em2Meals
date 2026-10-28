@@ -518,21 +518,40 @@ export function ShiftsPanel({
       <h3 className="panel-subhead">Who worked when</h3>
       <GridTable
         empty="No assignments yet."
-        heads={["Date", "Staff", "Job", "Role", "Time", "Hours", "Cost", "Status", ""]}
+        heads={["When", "Who", "Job", "Hours", "Cost", "Status", ""]}
         rows={shifts.map((x) => [
-          x.date,
-          name(x.staffId),
-          s.orders.find((o) => o.id === x.orderId)?.reference || "General",
-          x.role,
-          x.start ? `${x.start}–${x.end}${x.breakMinutes ? ` (${x.breakMinutes}m break)` : ""}` : "—",
+          <div key="when">
+            {x.date}
+            <br />
+            <small>
+              {x.start
+                ? `${x.start}–${x.end}${x.breakMinutes ? ` · ${x.breakMinutes}m break` : ""}`
+                : "No times"}
+            </small>
+          </div>,
+          <div key="who">
+            <strong>{name(x.staffId)}</strong>
+            <br />
+            <small>{x.role}</small>
+          </div>,
+          s.orders.find((o) => o.id === x.orderId)?.reference || "General work",
           hrs(x.hours),
-          `${money(x.cost)} @ ${money(x.rate)}/h`,
+          <div key="cost">
+            {money(x.cost)}
+            <br />
+            <small>{money(x.rate)}/h</small>
+          </div>,
           <Tag key="status" tone={x.status === "worked" ? "green" : "amber"}>
-            {x.status === "worked" ? "Worked" : "Assigned"}
+            {x.status === "worked"
+              ? "Worked"
+              : x.date < today()
+                ? "Confirm hours"
+                : "Assigned"}
           </Tag>,
-          <div key="actions" className="inline-actions" style={{ padding: 0 }}>
+          <div key="actions" className="row-actions">
             {x.status === "planned" && (
               <Button
+                size="sm"
                 variant="outline"
                 onClick={() =>
                   open(shiftEditor(s, { ...x, status: "worked" }, "Confirm hours worked"))
@@ -541,10 +560,11 @@ export function ShiftsPanel({
                 Confirm hours
               </Button>
             )}
-            <Button variant="ghost" onClick={() => open(shiftEditor(s, x))}>
+            <Button size="sm" variant="ghost" onClick={() => open(shiftEditor(s, x))}>
               Edit
             </Button>
             <Button
+              size="sm"
               variant="ghost"
               onClick={() => {
                 if (confirm(`Remove ${name(x.staffId)} from this job on ${x.date}?`))

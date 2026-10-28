@@ -2055,6 +2055,94 @@ h2,
   line-height: 1.65;
   border-top: 1px solid #edf0ea;
 }
+.cost-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.cost-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  padding: 18px 20px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cost-card strong {
+  font-size: 1.7rem;
+  margin: 10px 0 8px;
+}
+.cost-card small {
+  display: block;
+  line-height: 1.5;
+}
+.cost-card:hover {
+  border-color: #b9c6bd;
+}
+.cost-card.active {
+  border-color: #243e4b;
+  box-shadow: inset 0 -3px 0 #a9853f;
+}
+.cost-card.alert strong {
+  color: #86652a;
+}
+.cost-card:focus-visible {
+  outline: 2px solid #b08d51;
+  outline-offset: 2px;
+}
+.cost-tabs {
+  margin: 0 0 20px;
+}
+.check-list {
+  margin-bottom: 18px;
+  padding: 6px 20px;
+  border: 1px solid #ecdcb8;
+  border-radius: 5px;
+  background: #fbf6ea;
+}
+.check-list p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0;
+  font-size: 0.85rem;
+  color: #6b5426;
+}
+.row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+.tab-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #f6ecd7;
+  color: #86652a;
+  font-size: 11px;
+  font-weight: 600;
+}
+@media (max-width: 900px) {
+  .cost-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .cost-card {
+    padding: 14px;
+  }
+  .cost-card strong {
+    font-size: 1.35rem;
+  }
+}
 /* Wide cost tables scroll sideways on phones instead of squashing. */
 @media (max-width: 900px) {
   .costs-travel [data-slot="table-container"] table {

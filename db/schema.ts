@@ -107,3 +107,41 @@ export const crmDigestDeliveries = pgTable(
     index("idx_crm_digest_date_status").on(t.date, t.status),
   ],
 );
+// People who can open the owner workspace, besides the owners named in the
+// OWNER_EMAILS / OWNER_IDS deployment settings.
+export const teamMembers = pgTable(
+  "team_members",
+  {
+    email: text("email").primaryKey(),
+    name: text("name").notNull().default(""),
+    role: text("role").notNull(),
+    status: text("status").notNull().default("active"),
+    invitedBy: text("invited_by").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    lastSeenAt: text("last_seen_at"),
+  },
+  (t) => [
+    check(
+      "team_members_role_valid",
+      sql`${t.role} in ('owner', 'manager', 'kitchen', 'viewer')`,
+    ),
+    check(
+      "team_members_status_valid",
+      sql`${t.status} in ('active', 'suspended')`,
+    ),
+  ],
+);
+// A record of every change to team access.
+export const accessEvents = pgTable(
+  "access_events",
+  {
+    id: text("id").primaryKey(),
+    at: text("at").notNull(),
+    actor: text("actor").notNull(),
+    action: text("action").notNull(),
+    target: text("target").notNull(),
+    detail: text("detail").notNull().default(""),
+  },
+  (t) => [index("idx_access_events_at").on(t.at)],
+);

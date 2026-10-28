@@ -1,5 +1,5 @@
 import {
-  owner,
+  requireAccess,
   loadState,
   readEnquiries,
   errorResponse,
@@ -9,8 +9,7 @@ import {
 // submissions) as a downloadable JSON file.
 export async function GET(req: Request) {
   try {
-    if (!(await owner()))
-      return errorResponse(Error("Owner access required"), 403);
+    await requireAccess("data");
     const mode =
       new URL(req.url).searchParams.get("mode") === "sample" ? "sample" : "live";
     const { state, revision } = await loadState(mode);

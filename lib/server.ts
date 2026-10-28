@@ -1,10 +1,12 @@
 import { ZodError } from "zod";
 import { getDb } from "@/db";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { authMode } from "./auth-mode";
+import { can, type Permission } from "./access";
+import { AccessDenied, assertCan, currentMember } from "./team";
 import { emptyState, type State, type Command, applyCommand } from "./domain";
 import { sampleState } from "./sample";
 import { liveMenu, type PublicMenu } from "./menu";
+import { publicWrapped, type WrappedStory } from "./wrapped";
 import { normaliseState, reconcileStock } from "./operations";
 import { assertStateIntegrity, assertStateShape } from "./state-integrity";
 declare global {
@@ -22,6 +24,7 @@ export const config = () => {
   // these safely into server bundles, whereas passing the process.env object
   // through indirectly can leave serverless functions with an empty shim.
   return {
+    CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
     // DVLA Vehicle Enquiry Service key, for number plate lookups.
     DVLA_API_KEY: process.env.DVLA_API_KEY,
@@ -46,21 +49,14 @@ export const config = () => {
 export function database() {
   return getDb();
 }
-export async function owner() {
-  const user = await getChatGPTUser();
-  if (!user) return null;
-  if (authMode() === "demo") return user;
-  const emails = String(config().OWNER_EMAILS || "")
-    .split(",")
-    .map((x) => x.trim().toLowerCase())
-    .filter(Boolean);
-  const ids = String(config().OWNER_IDS || "")
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-  return emails.includes(user.email.toLowerCase()) || ids.includes(user.userId)
-    ? user
-    : null;
+// The signed-in person when their role includes the permission, or null.
+export async function owner(permission: Permission = "view") {
+  const member = await currentMember(config());
+  return member && can(member.role, permission) ? member : null;
+}
+// Like owner(), but throws a 403 error that names what the role is missing.
+export async function requireAccess(permission: Permission = "view") {
+  return assertCan(await currentMember(config()), permission);
 }
 export function sameOrigin(req: Request) {
   const origin = req.headers.get("origin");
@@ -106,7 +102,9 @@ export async function loadState(mode = "live") {
     (!original.schemaVersion ||
       original.schemaVersion < 5 ||
       // Samples made before batch lot codes and recalls existed.
-      !Array.isArray((original as Partial<State>).recalls));
+      !Array.isArray((original as Partial<State>).recalls) ||
+      // Samples made before the client Wrapped example existed.
+      !(original.customers || []).some((c) => c.id === "sample-client-harbour"));
   const state = refreshSample ? sampleState() : normaliseState(original);
   if (refreshSample) {
     // Save the refreshed sample so record ids stay stable between loads.
@@ -236,6 +234,16 @@ export async function readPublishedMenu(): Promise<PublicMenu | null> {
   if (!row) return null;
   return liveMenu(JSON.parse(row.data) as Pick<State, "menus">);
 }
+// Public read for a shared Wrapped link: only the frozen client story.
+export async function readSharedWrapped(id: string): Promise<WrappedStory | null> {
+  if (!/^[a-f0-9]{32}$/.test(id)) return null;
+  const row = await database()
+    .prepare("SELECT data FROM workspaces WHERE id=?")
+    .bind("live")
+    .first<{ data: string }>();
+  if (!row) return null;
+  return publicWrapped(JSON.parse(row.data) as Pick<State, "wrapped">, id);
+}
 // Remove original website submissions (and their import records, by cascade)
 // by id, and any whose submitted email matches an erased customer.
 export async function deleteRawEnquiries({
@@ -279,6 +287,7 @@ export async function readEnquiries() {
   }));
 }
 export function errorResponse(e: unknown, status = 400) {
+  if (e instanceof AccessDenied) status = 403;
   const message =
     e instanceof ZodError
       ? e.issues
@@ -305,6 +314,7 @@ export function integrationStatus() {
     dvla: !!c.DVLA_API_KEY,
     email: !!((c.RESEND_API_KEY || c.SMTP2GO_API_KEY) && c.EMAIL_FROM),
     owner: !!(c.OWNER_EMAILS || c.OWNER_IDS),
+    clerk: authMode() === "clerk" && !!c.CLERK_SECRET_KEY,
   };
 }
 export async function jsonBody(req: Request) {

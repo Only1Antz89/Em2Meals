@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { owner, sameOrigin, jsonBody, loadState, errorResponse } from "@/lib/server";
+import { requireAccess, sameOrigin, jsonBody, loadState, errorResponse } from "@/lib/server";
 import { gemini } from "@/lib/integrations";
 import { categories } from "@/lib/operations";
 import { recipeUnits } from "@/lib/domain";
@@ -67,7 +67,7 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    if (!(await owner())) return errorResponse(Error("Owner access required"), 403);
+    await requireAccess("kitchen");
     sameOrigin(req);
     const payload = z
       .object({

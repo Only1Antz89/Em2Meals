@@ -1,5 +1,5 @@
 import {
-  owner,
+  requireAccess,
   sameOrigin,
   jsonBody,
   loadState,
@@ -12,8 +12,7 @@ import { tripFuelCost } from "@/lib/team-fleet";
 import { z } from "zod";
 export async function POST(req: Request) {
   try {
-    const user = await owner();
-    if (!user) return errorResponse(Error("Owner access required"), 403);
+    const user = await requireAccess("orders");
     sameOrigin(req);
     const p = z
       .object({

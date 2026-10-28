@@ -1,4 +1,11 @@
 import {
+  type WasteCheck,
+  type WasteDisposal,
+  type WrappedShare,
+  wasteDisposals,
+  wrappedCommand,
+} from "./wrapped";
+import {
   type FinanceExtra,
   type Journey,
   reportingCommand,
@@ -215,6 +222,8 @@ export type Order = {
     mapUrl?: string;
   };
   analysis?: OrderAnalysis | null;
+  // Completed post-event waste check (see lib/wrapped.ts).
+  wasteCheck?: WasteCheck;
 };
 export type Recall = {
   id: string;
@@ -360,7 +369,13 @@ export type State = OperationsState & {
     cost: number;
     reason: string;
     date: string;
+    // Where the food went. Older records have none ("not recorded").
+    disposal?: WasteDisposal;
+    // Set on records created by a post-event waste check.
+    source?: "check";
   }[];
+  // Client Wrapped reports shared by link (frozen, customer-safe snapshots).
+  wrapped?: WrappedShare[];
   feedback: {
     id: string;
     customerId: string;
@@ -1513,6 +1528,8 @@ export function applyCommand(
           ),
           reason: short.min(1),
           date: date,
+          disposal: z
+            .preprocess((v) => (v === "" ? undefined : v), z.enum(wasteDisposals).optional()),
         })
         .parse(p);
       const o = s.orders.find((x) => x.id === v.orderId);
@@ -1741,7 +1758,8 @@ export function applyCommand(
         recallCommand(s, command.type, p, at) ??
         privacyCommand(s, command.type, p, at) ??
         reportingCommand(s, command.type, p) ??
-        teamFleetCommand(s, command.type, p);
+        teamFleetCommand(s, command.type, p) ??
+        wrappedCommand(s, command.type, p, at);
       if (result === undefined) throw Error("Unknown action");
       target = result;
     }

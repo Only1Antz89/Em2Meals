@@ -1,5 +1,5 @@
 import {
-  owner,
+  requireAccess,
   command,
   errorResponse,
   jsonBody,
@@ -10,10 +10,11 @@ import {
 } from "@/lib/server";
 import { linkedEnquiryIds } from "@/lib/privacy";
 import { z } from "zod";
+import { commandPermission, visibleState } from "@/lib/access";
+import { assertCan } from "@/lib/team";
 export async function POST(req: Request) {
   try {
-    const user = await owner();
-    if (!user) return errorResponse(Error("Owner access required"), 403);
+    const user = await requireAccess("view");
     sameOrigin(req);
     const p = z
       .object({
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
       })
       .parse(await jsonBody(req));
     if (p.command.type === "analysis") throw Error("Use the analysis endpoint");
+    assertCan(user, commandPermission(p.command.type, p.command.payload));
     if (p.command.type === "order" && p.command.payload?.enquiryId) {
       if (p.mode !== "live")
         throw Error("Sample data cannot import live enquiries");
@@ -54,7 +56,8 @@ export async function POST(req: Request) {
       p.revision,
     );
     if (privacy) await deleteRawEnquiries(privacy);
-    return Response.json(result, { headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      { ...result, state: visibleState(result.state, user.role) }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return errorResponse(e);
   }

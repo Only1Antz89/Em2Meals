@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { owner, sameOrigin, jsonBody, errorResponse, loadState } from "@/lib/server";
+import { requireAccess, sameOrigin, jsonBody, errorResponse, loadState } from "@/lib/server";
 import { rateLimit } from "@/lib/upgrade-server";
 import { geocode, researchVenue, venueContext, venueMap, withWalking } from "@/lib/venue-research";
 
@@ -10,7 +10,7 @@ import { geocode, researchVenue, venueContext, venueMap, withWalking } from "@/l
 //   for orders is saved on the order by /api/admin/research.
 export async function POST(req: Request) {
   try {
-    if (!(await owner())) return errorResponse(Error("Owner access required"), 403);
+    await requireAccess("orders");
     sameOrigin(req);
     const p = z
       .object({

@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext } from "react";
 import type { State, Enquiry } from "@/lib/domain";
+import type { Role } from "@/lib/access";
 
 export type StoredEnquiry = {
   id: string;
@@ -37,6 +38,10 @@ export type Ops = {
   reload: () => Promise<void>;
   busy: boolean;
   open: (e: Edit) => void;
+  // The signed-in person's role and sign-in method.
+  role: Role;
+  email: string;
+  authMode: "demo" | "clerk" | "chatgpt";
 };
 
 export const Context = createContext<Ops>(null!);

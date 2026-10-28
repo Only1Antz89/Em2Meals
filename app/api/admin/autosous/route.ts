@@ -1,4 +1,5 @@
-import { owner, loadState, errorResponse } from "@/lib/server";
+import { visibleState } from "@/lib/access";
+import { requireAccess, loadState, errorResponse } from "@/lib/server";
 import { workspaceAlerts, type AutoSousAlert } from "@/lib/autosous-alerts";
 import { alertMatches, foodSafetyFeed } from "@/lib/food-safety";
 import { kitchenBriefing } from "@/lib/autosous-briefing";
@@ -8,11 +9,10 @@ import { kitchenBriefing } from "@/lib/autosous-briefing";
 // ingredient you stock, otherwise a weekly news digest).
 export async function GET(req: Request) {
   try {
-    if (!(await owner()))
-      return errorResponse(Error("Owner access required"), 403);
+    const user = await requireAccess("view");
     const mode =
       new URL(req.url).searchParams.get("mode") === "sample" ? "sample" : "live";
-    const { state } = await loadState(mode);
+    const state = visibleState((await loadState(mode)).state, user.role);
     const alerts = workspaceAlerts(state);
     let feed: Awaited<ReturnType<typeof foodSafetyFeed>> = {
       items: [],

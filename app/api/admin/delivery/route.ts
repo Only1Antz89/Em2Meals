@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  owner,
+  requireAccess,
   sameOrigin,
   jsonBody,
   errorResponse,
@@ -10,8 +10,7 @@ import {
 } from "@/lib/server";
 export async function POST(req: Request) {
   try {
-    const user = await owner();
-    if (!user) return errorResponse(Error("Owner access required"), 403);
+    const user = await requireAccess("crm");
     sameOrigin(req);
     const p = z
       .object({

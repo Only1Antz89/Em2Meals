@@ -15,6 +15,13 @@
       "when": 1789550185041,
       "tag": "0001_smooth_king_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793182777055,
+      "tag": "0002_team_access",
+      "breakpoints": true
     }
   ]
 }

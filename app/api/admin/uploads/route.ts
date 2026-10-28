@@ -1,5 +1,5 @@
 import { put } from "@vercel/blob";
-import { errorResponse, owner, sameOrigin } from "@/lib/server";
+import { errorResponse, requireAccess, sameOrigin } from "@/lib/server";
 
 export const runtime = "nodejs";
 
@@ -12,8 +12,7 @@ const IMAGE_TYPES = new Map([
 
 export async function POST(req: Request) {
   try {
-    if (!(await owner()))
-      return errorResponse(Error("Owner access required"), 403);
+    await requireAccess("kitchen");
     sameOrigin(req);
     if (!process.env.BLOB_READ_WRITE_TOKEN)
       throw Error(

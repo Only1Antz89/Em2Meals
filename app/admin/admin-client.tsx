@@ -90,6 +90,8 @@ import {
 } from "@/lib/operations";
 import { Context, useOps, type Ops, type Edit, type Spec, type StoredEnquiry } from "./ops-context";
 import { updateQuery, useReportFilters } from "./report-controls";
+import SettingsPage, { settingsNavigation } from "./settings";
+import { can, roleInfo, sectionPermission, type Role } from "@/lib/access";
 const navigation = [
   ["", "Overview", LayoutDashboard],
   ["orders", "Enquiries & orders", ClipboardList],
@@ -387,11 +389,15 @@ export function AdminEditor({
 export default function Admin({
   section,
   ownerEmail,
+  displayName,
+  role,
   authMode,
   initialMode = "live",
 }: {
   section: string[];
   ownerEmail: string;
+  displayName: string;
+  role: Role;
   authMode: "demo" | "clerk" | "chatgpt";
   initialMode?: "live" | "sample";
 }) {
@@ -643,18 +649,26 @@ export default function Admin({
         reload: () => reload(),
         busy,
         open: setEdit,
+        role,
+        email: ownerEmail,
+        authMode,
       }}
     >
       <SidebarProvider className="ops-app">
         <Sidebar>
           <SidebarHeader>
             <Brand admin />
-            <span className="workspace-label">OWNER WORKSPACE</span>
+            <span className="workspace-label">
+              {role === "owner" ? "OWNER" : roleInfo[role].label.toUpperCase()}{" "}
+              WORKSPACE
+            </span>
           </SidebarHeader>
           <SidebarContent>
             <SidebarGroup>
               <SidebarMenu>
-                {navigation.map(([path, label, Icon]) => (
+                {navigation
+                  .filter(([path]) => can(role, sectionPermission(path)))
+                  .map(([path, label, Icon]) => (
                   <SidebarMenuItem key={path}>
                     <SidebarMenuButton asChild isActive={page === path}>
                       <a href={href(path)}>
@@ -735,6 +749,28 @@ export default function Admin({
                         ))}
                       </SidebarMenuSub>
                     )}
+                    {path === "settings" && page === path && (
+                      <SidebarMenuSub aria-label="Settings sections">
+                        {settingsNavigation
+                          .filter(([, , permission]) => can(role, permission))
+                          .map(([subpath, subLabel]) => (
+                            <SidebarMenuSubItem key={subpath || "business"}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={(section[1] || "") === subpath}
+                              >
+                                <a
+                                  href={href(
+                                    subpath ? `settings/${subpath}` : "settings",
+                                  )}
+                                >
+                                  {subLabel}
+                                </a>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                      </SidebarMenuSub>
+                    )}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -744,13 +780,13 @@ export default function Admin({
             <Link href="/" className="back-site">
               View website <ArrowUpRight size={16} />
             </Link>
-            <div className="owner-account">
-              <span>EM</span>
+            <a className="owner-account" href={href("settings/account")}>
+              <span>{initials(displayName || ownerEmail)}</span>
               <div>
-                <b>Owner</b>
+                <b>{roleInfo[role].label}</b>
                 <small>{ownerEmail}</small>
               </div>
-            </div>
+            </a>
             {authMode === "clerk" ? (
               <SignOutButton redirectUrl="/">
                 <button className="signout" type="button">
@@ -801,6 +837,12 @@ export default function Admin({
             </div>
           </header>
           <div className="ops-main">
+            {role === "viewer" && (
+              <div className="sample-banner" role="status">
+                View-only access: you can look at everything here but not
+                change it. Ask an owner if you need more.
+              </div>
+            )}
             {mode === "sample" && (
               <div className="sample-banner">
                 Sample workspace — illustrative clients, prices and stock.
@@ -853,7 +895,15 @@ export default function Admin({
                 {error}
               </p>
             )}
-            {!loaded ? (
+            {!can(role, sectionPermission(page)) ? (
+              <Panel title="Not part of your role">
+                <p className="panel-note">
+                  Your {roleInfo[role].label} role doesn’t include this
+                  section. Ask an owner to change your role in Settings → Team
+                  &amp; access.
+                </p>
+              </Panel>
+            ) : !loaded && !(page === "settings" && section[1] === "account") ? (
               <div className="metric-grid">
                 {[1, 2, 3, 4].map((x) => (
                   <Skeleton key={x} className="h-32 w-full" />
@@ -884,7 +934,7 @@ export default function Admin({
             ) : page === "assistant" ? (
               <Assistant />
             ) : page === "settings" ? (
-              <SettingsPage />
+              <SettingsPage view={section[1] || ""} />
             ) : (
               <p>Page not found.</p>
             )}
@@ -895,6 +945,12 @@ export default function Admin({
       </SidebarProvider>
     </Context.Provider>
   );
+}
+function initials(name: string) {
+  const parts = name.replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
+  return (
+    (parts[0]?.[0] || "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")
+  ).toUpperCase() || "EM";
 }
 export function Metric({
   label,
@@ -1987,194 +2043,6 @@ export function Drafts() {
           </Button>
         </DialogContent>
       </Dialog>
-    </>
-  );
-}
-function SettingsPage() {
-  const { s, open, integrations, mode } = useOps();
-  return (
-    <>
-      <Panel
-        title="Kitchen & business settings"
-        action={
-          <Button
-            onClick={() =>
-              open({
-                title: "Business settings",
-                action: "settings",
-                values: s.settings,
-                fields: [
-                  { key: "kitchen", label: "Kitchen address / postcode" },
-                  {
-                    key: "priceMode",
-                    label: "Default price entry",
-                    options: [
-                      { value: "exclusive", label: "Add VAT to price" },
-                      { value: "inclusive", label: "Price includes VAT" },
-                    ],
-                  },
-                  { key: "businessName", label: "Business legal name" },
-                  { key: "businessAddress", label: "Business address" },
-                  { key: "vatNumber", label: "VAT registration number" },
-                  {
-                    key: "paymentInstructions",
-                    label: "Invoice payment instructions",
-                    type: "textarea",
-                  },
-                  {
-                    key: "warningDays",
-                    label: "Expiry warning (days)",
-                    type: "number",
-                  },
-                  {
-                    key: "urgentDays",
-                    label: "Urgent use-by warning (days)",
-                    type: "number",
-                  },
-                  {
-                    key: "vatRate",
-                    label: "Configured VAT rate (%)",
-                    type: "number",
-                  },
-                  { key: "vehicle", label: "Vehicle" },
-                  {
-                    key: "mpg",
-                    label: "Measured fuel economy (UK MPG)",
-                    type: "number",
-                  },
-                  {
-                    key: "fuelPrice",
-                    label: "Petrol price (£ per litre)",
-                    type: "number",
-                  },
-                  {
-                    key: "bufferMinutes",
-                    label: "Loading / preparation buffer (minutes)",
-                    type: "number",
-                  },
-                  {
-                    key: "ownerNotes",
-                    label: "Kitchen notes",
-                    type: "textarea",
-                  },
-                  {
-                    key: "recipeEditorMode",
-                    label: "Recipe editor layout",
-                    options: [
-                      { value: "workspace", label: "Single workspace" },
-                      { value: "wizard", label: "Three-step wizard" },
-                    ],
-                  },
-                ],
-              })
-            }
-          >
-            Edit settings
-          </Button>
-        }
-      >
-        <dl className="settings-list">
-          <div>
-            <dt>Kitchen</dt>
-            <dd>{s.settings.kitchen || "Setup required"}</dd>
-          </div>
-          <div>
-            <dt>VAT rate</dt>
-            <dd>{s.settings.vatRate}% · owner configured</dd>
-          </div>
-          <div>
-            <dt>Vehicle</dt>
-            <dd>{s.settings.vehicle}</dd>
-          </div>
-          <div>
-            <dt>Fuel economy</dt>
-            <dd>
-              {s.settings.mpg ? `${s.settings.mpg} UK MPG` : "Setup required"}
-            </dd>
-          </div>
-          <div>
-            <dt>Petrol price</dt>
-            <dd>
-              {s.settings.fuelPrice
-                ? `£${s.settings.fuelPrice.toFixed(2)} / litre`
-                : "Setup required"}
-            </dd>
-          </div>
-          <div>
-            <dt>Loading buffer</dt>
-            <dd>{s.settings.bufferMinutes} minutes</dd>
-          </div>
-          <div>
-            <dt>Recipe editor</dt>
-            <dd>
-              {s.settings.recipeEditorMode === "wizard"
-                ? "Three-step wizard"
-                : "Single workspace"}
-            </dd>
-          </div>
-        </dl>
-        <p className="panel-note">
-          VAT is configurable; this workspace does not determine tax treatment
-          or file tax returns. Kitchen and vehicle figures must be completed
-          before live cost estimates.
-        </p>
-      </Panel>
-      <Panel
-        title="Backup & data export"
-        action={
-          <Button asChild variant="outline">
-            <a href={`/api/admin/export?mode=${mode}`} download>
-              Download backup
-            </a>
-          </Button>
-        }
-      >
-        <p className="panel-note">
-          Downloads every record in the {mode === "sample" ? "sample" : "live"}{" "}
-          workspace as a JSON file
-          {mode === "live" ? ", including original website enquiries" : ""}.
-          It contains customer personal data: store it securely and delete old
-          copies in line with your retention schedule.
-        </p>
-      </Panel>
-      <Panel title="Connected services">
-        <div className="integration-grid">
-          {[
-            [
-              "gemini",
-              "AutoSous",
-              "Structured enquiry review and read-only operations help.",
-            ],
-            [
-              "maps",
-              "Google Maps",
-              "Address lookup and traffic-aware driving estimates.",
-            ],
-            [
-              "email",
-              "Business email",
-              "Resend or SMTP2GO delivery after review and an explicit send.",
-            ],
-            [
-              "owner",
-              "Owner access",
-              "ChatGPT sign-in with a server-side allowlist.",
-            ],
-          ].map(([k, t, d]) => (
-            <article key={k}>
-              <Tag tone={integrations[k] ? "green" : "amber"}>
-                {integrations[k] ? "Configured" : "Setup required"}
-              </Tag>
-              <h3>{t}</h3>
-              <p>{d}</p>
-            </article>
-          ))}
-        </div>
-        <p className="panel-note">
-          API credentials and owner access are managed securely in deployment
-          configuration. Never enter keys in notes or enquiry fields.
-        </p>
-      </Panel>
     </>
   );
 }

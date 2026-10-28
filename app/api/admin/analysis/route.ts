@@ -1,5 +1,5 @@
 import {
-  owner,
+  requireAccess,
   sameOrigin,
   jsonBody,
   loadState,
@@ -33,8 +33,7 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const user = await owner();
-    if (!user) return errorResponse(Error("Owner access required"), 403);
+    const user = await requireAccess("orders");
     sameOrigin(req);
     const p = z
       .object({ mode: z.enum(["sample", "live"]), orderId: z.string() })

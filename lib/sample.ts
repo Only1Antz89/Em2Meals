@@ -343,6 +343,141 @@ export function sampleState(): State {
   run("stage", { orderId: "sample-upcoming", status: "confirmed" });
   run("stage", { orderId: "sample-upcoming", status: "ingredients needed" });
 
+  // Example vehicle, team and job hours for the Costs & travel page.
+  run("vehicle", {
+    registration: "",
+    name: "Kitchen SUV · example",
+    make: "Hyundai",
+    model: "Tucson 1.6 GDi",
+    fuelType: "petrol",
+    year: 2018,
+    engineCc: 1591,
+    co2: 147,
+    firstRegistered: "2018-03",
+    mpg: 34,
+    economySource: "measured",
+    fuelPrice: 1.5,
+    isDefault: true,
+  });
+  const vehicleId = s.vehicles[0].id;
+  run("staff", {
+    name: "Em (owner) · example",
+    role: "Head chef",
+    employment: "owner",
+    hourlyRate: 2500,
+    onCostPercent: 0,
+  });
+  run("staff", {
+    name: "Sam Lee · example",
+    role: "Kitchen assistant",
+    employment: "employee",
+    hourlyRate: 1221,
+    onCostPercent: 18,
+  });
+  const [chefId, assistantId] = s.staff.map((m) => m.id);
+  for (const [staffId, start, end, status, orderId, date] of [
+    [chefId, "07:30", "13:30", "worked", "sample-delivered", today()],
+    [assistantId, "08:00", "13:00", "worked", "sample-delivered", today()],
+    [chefId, "08:00", "14:00", "planned", "sample-upcoming", s.orders.find((o) => o.id === "sample-upcoming")!.details.date],
+    [assistantId, "09:00", "14:00", "planned", "sample-upcoming", s.orders.find((o) => o.id === "sample-upcoming")!.details.date],
+  ] as const)
+    run("shift", { staffId, orderId, date, start, end, breakMinutes: 0, status });
+  run("journey", {
+    orderId: "sample-delivered",
+    service: "corporate",
+    date: today(),
+    miles: 14,
+    minutes: 50,
+    fuelCost: null,
+    vehicleId,
+    extraCost: 600,
+    status: "actual",
+    notes: "Kitchen to Northbank and back · example",
+    paymentDate: "",
+  });
+  // More example costs so every Costs & travel tab has something to show.
+  // Dates stay inside the current month so the default period includes them.
+  const day = Number(today().slice(8));
+  const earlier = (days: number) =>
+    new Date(Date.now() - Math.min(days, day - 1) * 86400000)
+      .toISOString()
+      .slice(0, 10);
+  const upcomingDate = s.orders.find((o) => o.id === "sample-upcoming")!.details
+    .date;
+  run("vehicle", {
+    registration: "",
+    name: "Catering van · example",
+    make: "Ford",
+    model: "Transit Custom 2.0 EcoBlue",
+    fuelType: "diesel",
+    year: 2021,
+    engineCc: 1995,
+    co2: 199,
+    firstRegistered: "2021-05",
+    mpg: 33.2,
+    economySource: "estimated",
+    fuelPrice: 1.55,
+  });
+  run("vehicle", {
+    registration: "",
+    name: "Errands car · example",
+    make: "Nissan",
+    model: "Leaf",
+    fuelType: "electric",
+    year: 2020,
+    mpg: 0,
+    milesPerKwh: 3.8,
+    economySource: "measured",
+    fuelPrice: 0.28,
+  });
+  const [, vanId, leafId] = s.vehicles.map((v) => v.id);
+  run("staff", {
+    name: "Priya Shah · example",
+    role: "Chef",
+    employment: "contractor",
+    hourlyRate: 1800,
+    onCostPercent: 0,
+    notes: "Freelance. Level 3 food hygiene.",
+  });
+  run("staff", {
+    name: "Tom Reid · example",
+    role: "Driver",
+    employment: "employee",
+    hourlyRate: 1250,
+    onCostPercent: 15,
+  });
+  const [, , freelanceId, driverId] = s.staff.map((m) => m.id);
+  for (const [staffId, start, end, breakMinutes, status, orderId, date, notes] of [
+    [chefId, "09:00", "15:00", 30, "worked", "", earlier(9), "Menu testing and prep"],
+    [freelanceId, "09:00", "15:00", 30, "worked", "", earlier(9), "Menu testing and prep"],
+    [chefId, "10:00", "12:00", 0, "worked", "", earlier(4), "Supplier visit and admin"],
+    [freelanceId, "08:00", "14:30", 30, "planned", "sample-upcoming", upcomingDate, ""],
+    [driverId, "10:30", "14:30", 0, "planned", "sample-upcoming", upcomingDate, "Delivery and collection"],
+    // Assigned but not confirmed yet, so it shows under "Needs a look".
+    [assistantId, "13:00", "17:00", 0, "planned", "", earlier(2), "Deep clean"],
+  ] as const)
+    run("shift", { staffId, orderId, date, start, end, breakMinutes, status, notes });
+  for (const j of [
+    { orderId: "", service: "shared", date: earlier(4), miles: 22, minutes: 65, vehicleId: leafId, extraCost: 0, notes: "Supplier visit · example" },
+    { orderId: "", service: "shared", date: earlier(9), miles: 9, minutes: 30, vehicleId: leafId, extraCost: 350, notes: "Cash & carry run · example" },
+    { orderId: "sample-upcoming", service: "corporate", date: upcomingDate, miles: 16, minutes: 60, vehicleId: vanId, extraCost: 800, notes: "Planned delivery and collection · example", status: "estimated" },
+  ])
+    run("journey", { status: "actual", fuelCost: null, paymentDate: "", ...j });
+  for (const e of [
+    { description: "Food packaging and labels · example", costType: "overhead", amount: 4680, vatRate: 20, vatRecoverable: true, incurredDate: earlier(12) },
+    { description: "Chafing dish hire · example", costType: "other", amount: 3600, vatRate: 20, vatRecoverable: true, incurredDate: earlier(1), orderId: "sample-upcoming" },
+    { description: "Public liability insurance (monthly) · example", costType: "overhead", amount: 2450, vatRate: 0, vatRecoverable: false, incurredDate: earlier(20) },
+  ])
+    run("expense", {
+      service: "shared",
+      orderId: "",
+      purchaseId: "",
+      priceMode: "inclusive",
+      paymentDate: e.incurredDate,
+      status: "actual",
+      ...e,
+    });
+
   const isoDaysAgo = (days: number) =>
     new Date(Date.now() - days * 86400000).toISOString();
   const dateDaysAgo = (days: number) => isoDaysAgo(days).slice(0, 10);

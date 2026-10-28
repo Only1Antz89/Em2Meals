@@ -24,6 +24,9 @@ const command = (s: State, type: string, payload: unknown) =>
 function fixture() {
   const s = sampleState();
   s.finance = [];
+  // Linked records live alongside finance; clear them together.
+  s.journeys = [];
+  s.shifts = [];
   s.purchases = [];
   const first = s.orders[0];
   const customer = {

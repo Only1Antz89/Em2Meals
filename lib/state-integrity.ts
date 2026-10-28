@@ -69,6 +69,9 @@ export function assertStateIntegrity(state: State) {
   ids(state.finance, "finance");
   ids(state.drafts, "drafts");
   const journeys = ids(state.journeys, "journeys");
+  const vehicles = ids(state.vehicles || [], "vehicles");
+  const staff = ids(state.staff || [], "staff");
+  const shifts = ids(state.shifts || [], "shifts");
   const invoices = ids(state.invoices, "invoices");
   ids(state.menus || [], "menus");
 
@@ -132,14 +135,22 @@ export function assertStateIntegrity(state: State) {
     reference(`finance entry ${entry.id}`, entry.orderId, orders, true);
     reference(`finance entry ${entry.id}`, entry.purchaseId, purchases, true);
     reference(`finance entry ${entry.id}`, entry.journeyId, journeys, true);
+    reference(`finance entry ${entry.id}`, entry.shiftId, shifts, true);
   }
 
   // Drafts are immutable communication snapshots and may deliberately outlive
   // a deleted customer or supplier. Their optional ids are historical context,
   // rather than live referential links.
 
-  for (const journey of state.journeys)
+  for (const journey of state.journeys) {
     reference(`journey ${journey.id}`, journey.orderId, orders, true);
+    reference(`journey ${journey.id}`, journey.vehicleId || undefined, vehicles, true);
+  }
+
+  for (const shift of state.shifts || []) {
+    reference(`shift ${shift.id}`, shift.staffId, staff);
+    reference(`shift ${shift.id}`, shift.orderId || undefined, orders, true);
+  }
 
   for (const invoice of state.invoices) {
     reference(`invoice ${invoice.id}`, invoice.orderId, orders);

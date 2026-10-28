@@ -1252,3 +1252,81 @@ test("owners can correct an order whose event date has passed without changing t
     /must not be in the past/,
   );
 });
+test("vehicle economy: CO2-based MPG estimate, cost per mile and trip pricing", async () => {
+  const { estimateMpg, costPerMile, vehicleFuelCost, fuelTypeFromDvla, hoursBetween } =
+    await import("../lib/team-fleet");
+  // 2018 petrol Tucson, 147 g/km on the older NEDC test: about 35 MPG real-world.
+  assert.equal(estimateMpg(147, "petrol", "2018-03"), 35.5);
+  // Same CO2 on WLTP is closer to real driving.
+  assert.ok(estimateMpg(147, "petrol", "2021-06")! > 35.5);
+  assert.equal(estimateMpg(0, "petrol"), null);
+  assert.equal(estimateMpg(120, "electric"), null);
+  assert.equal(fuelTypeFromDvla("PETROL"), "petrol");
+  assert.equal(fuelTypeFromDvla("ELECTRICITY"), "electric");
+  assert.equal(fuelTypeFromDvla("HYBRID ELECTRIC", 110), "hybrid-petrol");
+  assert.equal(fuelTypeFromDvla("HYBRID ELECTRIC", 30), "plug-in-hybrid");
+  assert.equal(fuelTypeFromDvla("ELECTRIC DIESEL", 120), "hybrid-diesel");
+  const car = { fuelType: "petrol" as const, mpg: 40, milesPerKwh: 0, fuelPrice: 1.5 };
+  assert.equal(vehicleFuelCost(car, 100), 1705);
+  assert.equal(Math.round(costPerMile(car)! * 10) / 10, 17);
+  const ev = { fuelType: "electric" as const, mpg: 0, milesPerKwh: 4, fuelPrice: 0.28 };
+  assert.equal(vehicleFuelCost(ev, 100), 700);
+  assert.equal(vehicleFuelCost({ ...car, mpg: 0 }, 10), null);
+  assert.equal(hoursBetween("08:00", "13:30", 30), 5);
+  assert.equal(hoursBetween("22:00", "02:00"), 4);
+});
+test("journeys without a receipt are priced from the chosen vehicle", () => {
+  let s = emptyState();
+  s = act(s, "vehicle", { registration: "ab12 cde", make: "Ford", model: "Transit", fuelType: "diesel", mpg: 30, fuelPrice: 1.6 });
+  s = act(s, "vehicle", { registration: "", name: "Owner car", fuelType: "petrol", mpg: 45, fuelPrice: 1.5 });
+  const [van, car] = s.vehicles;
+  assert.equal(van.registration, "AB12CDE");
+  assert.equal(van.name, "Ford Transit");
+  assert.ok(van.isDefault, "first vehicle becomes the default");
+  assert.ok(!car.isDefault);
+  assert.throws(() => act(s, "vehicle", { registration: "AB12CDE", fuelType: "diesel", mpg: 30, fuelPrice: 1.6 }), /already listed/);
+  const journey = { orderId: "", service: "shared", date: today(), miles: 30, minutes: 60, extraCost: 0, status: "actual", notes: "", paymentDate: "" };
+  s = act(s, "journey", { ...journey, fuelCost: null, vehicleId: car.id });
+  assert.equal(s.journeys[0].fuelCost, Math.round((30 / 45) * 4.54609 * 150));
+  assert.equal(s.journeys[0].fuelEstimated, true);
+  // A receipt amount wins over the estimate.
+  s = act(s, "journey", { ...journey, id: s.journeys[0].id, fuelCost: 999, vehicleId: car.id });
+  assert.equal(s.journeys[0].fuelCost, 999);
+  assert.equal(s.journeys[0].fuelEstimated, false);
+  // No vehicle chosen: the default vehicle is used.
+  s = act(s, "journey", { ...journey, fuelCost: null, vehicleId: "" });
+  assert.equal(s.journeys[1].fuelCost, Math.round((30 / 30) * 4.54609 * 160));
+  // Making the car the default moves the flag.
+  s = act(s, "vehicle", { ...car, isDefault: true });
+  assert.deepEqual(s.vehicles.map((v) => v.isDefault), [false, true]);
+});
+test("staff assignments cost labour by the hour and flow into job profit", async () => {
+  const { jobPerformance } = await import("../lib/reporting");
+  let s = sampleState();
+  const delivered = s.orders.find((o) => o.id === "sample-delivered")!;
+  const job = jobPerformance(s, delivered);
+  // Sample: owner 6h at £25 and assistant 5h at £12.21 + 18% on-costs.
+  assert.equal(job.labour, 6 * 2500 + Math.round(5 * Math.round(1221 * 1.18)));
+  assert.equal(job.labourHours, 11);
+  assert.equal(job.missingLabour, false);
+  assert.equal(job.estimatedLabour, false);
+  const upcoming = jobPerformance(s, s.orders.find((o) => o.id === "sample-upcoming")!);
+  assert.equal(upcoming.estimatedLabour, true, "assigned-only hours stay estimated");
+  // Confirming hours with times and a break recalculates the linked cost.
+  const assistant = s.staff.find((m) => m.role === "Kitchen assistant")!.id;
+  const shift = s.shifts.find((x) => x.orderId === "sample-upcoming" && x.staffId === assistant)!;
+  s = act(s, "shift", { ...shift, start: "09:00", end: "15:30", breakMinutes: 30, status: "worked", rateOverride: 0 });
+  const updated = s.shifts.find((x) => x.id === shift.id)!;
+  assert.equal(updated.hours, 6);
+  const linked = s.finance.filter((f) => f.shiftId === shift.id);
+  assert.equal(linked.length, 1);
+  assert.equal(linked[0].amount, updated.cost);
+  assert.equal(linked[0].status, "actual");
+  assert.equal(linked[0].costType, "labour");
+  // Linked labour can only be changed through the assignment.
+  assert.throws(() => act(s, "expense", { id: linked[0].id, service: "shared", costType: "labour", description: "x", amount: 1, vatRate: 0, priceMode: "inclusive", vatRecoverable: false, incurredDate: today(), paymentDate: "", status: "actual" }), /editable expense/);
+  assert.throws(() => act(s, "shift", { staffId: assistant, date: today(), status: "planned", start: "09:00" }), /start and finish/);
+  assert.throws(() => act(s, "shift", { staffId: assistant, date: today(), status: "planned" }), /hours/);
+  s = act(s, "shift-remove", { id: shift.id });
+  assert.equal(s.finance.some((f) => f.shiftId === shift.id), false);
+});

@@ -26,6 +26,10 @@ export const config = () => {
   return {
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
     CRON_SECRET: process.env.CRON_SECRET,
+    // DVLA Vehicle Enquiry Service key, for number plate lookups.
+    DVLA_API_KEY: process.env.DVLA_API_KEY,
+    // Test hook: points plate lookups at a stand-in DVLA service.
+    DVLA_API_BASE: process.env.DVLA_API_BASE,
     EMAIL_FROM: process.env.EMAIL_FROM,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GEMINI_MODEL: process.env.GEMINI_MODEL,
@@ -307,6 +311,7 @@ export function integrationStatus() {
   return {
     gemini: !!c.GEMINI_API_KEY,
     maps: !!c.GOOGLE_MAPS_API_KEY,
+    dvla: !!c.DVLA_API_KEY,
     email: !!((c.RESEND_API_KEY || c.SMTP2GO_API_KEY) && c.EMAIL_FROM),
     owner: !!(c.OWNER_EMAILS || c.OWNER_IDS),
     clerk: authMode() === "clerk" && !!c.CLERK_SECRET_KEY,

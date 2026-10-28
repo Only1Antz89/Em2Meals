@@ -48,6 +48,7 @@ export function orderDeleteBlockers(s: State, order: Order) {
   if (s.waste.some((x) => x.orderId === order.id)) blockers.push("waste was recorded");
   if (s.feedback.some((x) => x.orderId === order.id)) blockers.push("it has feedback");
   if (s.journeys.some((x) => x.orderId === order.id)) blockers.push("journeys were recorded");
+  if ((s.shifts || []).some((x) => x.orderId === order.id)) blockers.push("staff were assigned");
   return blockers;
 }
 

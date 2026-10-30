@@ -205,23 +205,25 @@ type OverpassResult = {
   }[];
 };
 
-export async function overpass(query: string, what: string): Promise<OverpassResult> {
+export async function overpass(query: string, what: string, signal = AbortSignal.timeout(18000)): Promise<OverpassResult> {
   const configured = config().OSM_OVERPASS_BASE;
   const servers = configured ? [configured] : OVERPASS_SERVERS;
   let last = "";
   for (const base of servers) {
+    signal.throwIfAborted();
     try {
       const r = await fetch(`${base}/interpreter`, {
         method: "POST",
         headers: { "User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded" },
         body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(6000)]),
       });
       if (r.ok) return (await r.json()) as OverpassResult;
       last = `HTTP ${r.status}`;
       // Only a busy or broken server is worth retrying elsewhere.
       if (r.status !== 429 && r.status < 500) break;
     } catch (e) {
+      signal.throwIfAborted();
       last = e instanceof Error ? e.message : "no response";
     }
   }
@@ -399,6 +401,11 @@ export async function researchVenue(query: string, refresh = false, kitchen?: st
   const key = `venue-search:${q.toLowerCase()}`;
   if (refresh)
     await database().prepare("DELETE FROM research_cache WHERE id=?").bind(key).run();
+  // Journey and building lookups can run while the written report is pending.
+  const mapWithContext = venueMap([q]).then(async (map) => ({
+    ...map,
+    ...(await venueContext(kitchen, map.place)),
+  }));
   const [report, map] = await Promise.all([
     cached(key, 7, async () => {
       const r = await gemini(
@@ -406,12 +413,13 @@ export async function researchVenue(query: string, refresh = false, kitchen?: st
         VENUE_SYSTEM,
         undefined,
         true,
+        AbortSignal.timeout(45000),
       );
       return { text: r.text, sources: r.sources };
     }),
-    venueMap([q]),
+    mapWithContext,
   ]);
-  return { query: q, ...report, ...map, ...(await venueContext(kitchen, map.place)) };
+  return { query: q, ...report, ...map };
 }
 
 export type Journey = {

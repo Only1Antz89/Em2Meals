@@ -20,6 +20,7 @@ import { stages, today, type Order, type State } from "@/lib/domain";
 import type { BuildingDetails, Journey, MapPoint, StreetRule, VenueSearchResult } from "@/lib/venue-research";
 import { AutoSousMarkdown } from "./assistant-display";
 import { useOps } from "./ops-context";
+import { VenueLookupProgress } from "./venue-lookup-progress";
 
 const VenueMap3D = dynamic(() => import("./autosous-venue-map-3d").then((m) => m.VenueMap3D), {
   ssr: false,
@@ -94,6 +95,7 @@ export function useAutoVenueResearch() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mode, kind: "venue", id: next.id }),
+          signal: AbortSignal.timeout(90000),
         });
       })
       .then((r) => (r.ok ? reload() : undefined))
@@ -390,7 +392,19 @@ function BuildingCard({ b }: { b: BuildingDetails | null | undefined }) {
   );
 }
 
-export function VenueMode({
+// Each target owns its results, so a slow previous response cannot replace
+// the current venue or trigger its completion alert.
+export function VenueMode(props: {
+  target: VenueTarget | null;
+  onTarget: (t: VenueTarget) => void;
+  onClose: () => void;
+  working: string | null;
+}) {
+  const key = !props.target ? "idle" : props.target.kind === "order" ? `order:${props.target.id}` : `query:${props.target.query}`;
+  return <VenueView key={key} {...props} />;
+}
+
+function VenueView({
   target,
   onTarget,
   onClose,
@@ -420,16 +434,36 @@ export function VenueMode({
   const order = target?.kind === "order" ? s.orders.find((o) => o.id === target.id) : undefined;
   const targetKey = !target ? "idle" : target.kind === "order" ? `order:${target.id}` : `query:${target.query}`;
 
+  const requests = useRef(new Set<AbortController>());
+  useEffect(() => {
+    const active = requests.current;
+    return () => { active.forEach((controller) => controller.abort()); active.clear(); };
+  }, []);
+
   const post = useCallback(
     async <T,>(path: string, body: Record<string, unknown>): Promise<T> => {
-      const r = await fetch(`/api/admin/${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, mode }),
-      });
-      const j = (await r.json().catch(() => ({}))) as T & { error?: string };
-      if (!r.ok) throw Error(j.error || `Request failed (${r.status})`);
-      return j;
+      const controller = new AbortController();
+      requests.current.add(controller);
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90000)]);
+      try {
+        const r = await fetch(`/api/admin/${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, mode }),
+          signal,
+        });
+        const j = (await r.json().catch(() => ({}))) as T & { error?: string };
+        signal.throwIfAborted();
+        if (!r.ok) throw Error(j.error || `Request failed (${r.status})`);
+        return j;
+      } catch (e) {
+        if (e instanceof Error && e.name === "TimeoutError") {
+          throw Error("Venue lookup took too long. Use Refresh research to retry, or try a more specific address or postcode.");
+        }
+        throw e;
+      } finally {
+        requests.current.delete(controller);
+      }
     },
     [mode],
   );
@@ -442,7 +476,7 @@ export function VenueMode({
         await post("research", { kind: "venue", id, refresh });
         await reload();
       } catch (e) {
-        setError((e as Error).message);
+        if ((e as Error).name !== "AbortError") setError((e as Error).message);
       } finally {
         setResearching(false);
       }
@@ -472,7 +506,7 @@ export function VenueMode({
           setMap(r);
         }
       } catch (e) {
-        setError((e as Error).message);
+        if ((e as Error).name !== "AbortError") setError((e as Error).message);
       } finally {
         setLoading(false);
       }
@@ -485,13 +519,16 @@ export function VenueMode({
   const loadedKey = useRef("");
   useEffect(() => {
     if (loadedKey.current === targetKey) return;
-    loadedKey.current = targetKey;
+    let cancelled = false;
     const researchNow =
       target?.kind === "order" && order && !venueResearched(order) && integrations.gemini && working !== order.id;
     void Promise.resolve().then(() => {
+      if (cancelled) return;
+      loadedKey.current = targetKey;
       void load();
       if (researchNow && order) void researchOrder(order.id);
     });
+    return () => { cancelled = true; };
   }, [targetKey, load, target, order, integrations.gemini, researchOrder, working]);
 
   const busy = loading || researching || (order && working === order.id);
@@ -563,7 +600,13 @@ export function VenueMode({
           ) : null}
         </header>
         <div className="venue-overlay-body">
-          {error ? <p className="venue-overlay-error">{error}</p> : null}
+          <VenueLookupProgress
+            busy={!!busy}
+            ready={!!target && !error && !!(result || map.place || (order && venueResearched(order)))}
+            label={title}
+            phase={!target ? "Finding your kitchen…" : loading && researching ? "Finding the venue and researching access…" : loading ? "Finding the venue, parking and journey…" : "Researching access, loading and parking…"}
+          />
+          {error ? <p role="alert" className="venue-overlay-error">{error}</p> : null}
           {!target ? (
             <>
               {upcomingVenueOrders(s).length ? null : (

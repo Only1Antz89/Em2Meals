@@ -1074,3 +1074,73 @@ test("number plate lookup maps DVLA data and estimates MPG from CO2", async () =
     delete env.DVLA_API_KEY;
   }
 });
+
+import { overpass, researchVenue } from "../lib/venue-research";
+
+test("venue map retries stop when the shared lookup budget is exhausted", async () => {
+  const originalFetch = globalThis.fetch;
+  const controller = new AbortController();
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    controller.abort(new DOMException("Venue map deadline exceeded", "TimeoutError"));
+    return new Response("Busy", { status: 503 });
+  };
+  try {
+    await assert.rejects(overpass("query", "Parking", controller.signal), { name: "TimeoutError" });
+    assert.equal(calls, 1, "must not start another server after the deadline");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("venue context starts before the written report finishes", async () => {
+  resetDB();
+  env.GEMINI_API_KEY = "fake-gemini-key";
+  const originalFetch = globalThis.fetch;
+  let finishReport!: () => void;
+  let contextStarted!: () => void;
+  const report = new Promise<void>((resolve) => { finishReport = resolve; });
+  const context = new Promise<void>((resolve) => { contextStarted = resolve; });
+  let reportDone = false;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes(":generateContent")) {
+      await report;
+      reportDone = true;
+      return Response.json({ candidates: [{ content: { parts: [{ text: "Venue report" }] } }] });
+    }
+    if (url.includes("/search?")) return Response.json([{ lat: "51.5", lon: "-0.1", name: "Town Hall", display_name: "1 Town Square" }]);
+    if (url.includes("/route/v1/")) {
+      assert.equal(reportDone, false);
+      contextStarted();
+      return Response.json({ routes: [] });
+    }
+    if (url.includes("/interpreter")) return Response.json({ elements: [] });
+    throw Error(`Unexpected request: ${url}`);
+  };
+  const pending = researchVenue("Town Hall", false, "Kitchen Road");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([context, new Promise((_, reject) => { timer = setTimeout(() => reject(Error("Context waited for the report")), 1000); })]);
+  } finally {
+    clearTimeout(timer);
+    finishReport();
+    try { assert.equal((await pending).text, "Venue report"); }
+    finally { globalThis.fetch = originalFetch; delete env.GEMINI_API_KEY; }
+  }
+});
+
+test("venue AI deadline cancels retry backoff before another model is attempted", async () => {
+  env.GEMINI_API_KEY = "fake-gemini-key";
+  const originalFetch = globalThis.fetch;
+  const controller = new AbortController();
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    controller.abort(new DOMException("Venue deadline exceeded", "TimeoutError"));
+    return new Response("busy", { status: 503, headers: { "retry-after": "5" } });
+  };
+  try {
+    await assert.rejects(gemini("Venue", "System", undefined, true, controller.signal), { name: "TimeoutError" });
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = originalFetch; delete env.GEMINI_API_KEY; }
+});

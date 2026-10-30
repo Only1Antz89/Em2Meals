@@ -8627,3 +8627,17 @@ a.owner-account {
     grid-template-columns: 1fr;
   }
 }
+
+/* Venue feedback lives inside the current map overlay. */
+.venue-lookup-status:empty { display: none; }
+.venue-lookup-status { margin-bottom: 14px; font-size: 12px; color: #52645a; }
+.venue-lookup-status p { margin: 8px 0; }
+.venue-lookup-progress { padding: 12px; border: 1px solid #dce3dc; border-radius: 10px; background: #f6f8f5; }
+.venue-lookup-progress strong, .venue-lookup-progress > span, .venue-lookup-progress small { display: block; }
+.venue-lookup-progress strong { color: #203744; font-size: 13px; }
+.venue-lookup-progress small { line-height: 1.5; }
+.venue-lookup-progress button { display: block; margin: 10px 0; padding: 7px 10px; border: 1px solid #859b8e; border-radius: 6px; color: #203744; background: white; font: inherit; cursor: pointer; }
+.venue-progress-track { height: 6px; overflow: hidden; border-radius: 6px; background: #dce3dc; margin: 10px 0; }
+.venue-progress-track span { display: block; width: 35%; height: 100%; background: #32674c; animation: venue-lookup-slide 1.8s ease-in-out infinite; }
+@keyframes venue-lookup-slide { from { transform: translateX(-100%); } to { transform: translateX(390%); } }
+@media (prefers-reduced-motion: reduce) { .venue-progress-track span { animation: none; width: 100%; opacity: .6; } }

@@ -3,6 +3,8 @@ import { requireAccess, sameOrigin, jsonBody, errorResponse, loadState } from "@
 import { rateLimit } from "@/lib/upgrade-server";
 import { geocode, researchVenue, venueContext, venueMap, withWalking } from "@/lib/venue-research";
 
+export const maxDuration = 120;
+
 // Venue mode on the AutoSous page.
 // - { query }: research any venue or address, with its map and car parks.
 // - { base: true }: where the kitchen is.
@@ -66,6 +68,9 @@ export async function POST(req: Request) {
     const { state } = await loadState(p.mode);
     return Response.json(await researchVenue(p.query!, p.refresh, state.settings.kitchen));
   } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      return errorResponse(Error("Venue research took too long. Refresh to retry, or try a more specific address or postcode."), 504);
+    }
     const message = e instanceof Error ? e.message : "";
     return errorResponse(e, /rate limit/i.test(message) ? 429 : /unavailable|setup required/i.test(message) ? 503 : 400);
   }

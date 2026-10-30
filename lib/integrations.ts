@@ -44,8 +44,20 @@ function retryDelay(response: Response, attempt = 0) {
   return Math.min(800 * Math.pow(2, attempt) + Math.floor(Math.random() * 400), 4000);
 }
 
-const wait = (milliseconds: number) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
+const wait = (milliseconds: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const aborted = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", aborted);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", aborted);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", aborted, { once: true });
+    if (signal?.aborted) aborted();
+  });
 export async function googleJSON<T = Record<string, unknown>>(
   url: string,
   body: unknown,
@@ -115,7 +127,7 @@ function geminiModels() {
 // the fallbacks when a model is missing, rejects the request shape or is busy.
 export async function geminiGenerate(
   build: (model: string) => Record<string, unknown>,
-  options: { searchFallback?: boolean } = {},
+  options: { searchFallback?: boolean; signal?: AbortSignal } = {},
 ): Promise<{ response: GeminiResponse; model: string }> {
   const c = config();
   if (!c.GEMINI_API_KEY)
@@ -131,6 +143,7 @@ export async function geminiGenerate(
     const body = build(model);
     const url = `${base}/models/${model}:generateContent`;
     for (let attempt = 0; attempt < 2; attempt++) {
+      options.signal?.throwIfAborted();
       r = await fetch(url, {
         method: "POST",
         headers: {
@@ -138,7 +151,7 @@ export async function geminiGenerate(
           "x-goog-api-key": c.GEMINI_API_KEY,
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(35000),
+        signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(35000)]) : AbortSignal.timeout(35000),
       });
       // Search grounding has its own quota: when only that is exhausted,
       // answer from the model without search rather than failing.
@@ -147,7 +160,7 @@ export async function geminiGenerate(
         continue;
       }
       if (r.ok || !RETRYABLE_GEMINI_STATUSES.has(r.status)) break;
-      await wait(retryDelay(r, attempt));
+      await wait(retryDelay(r, attempt), options.signal);
     }
     if (r?.ok)
       return { response: (await r.json()) as GeminiResponse, model };
@@ -169,6 +182,7 @@ export async function gemini(
   system: string,
   schema?: Record<string, unknown>,
   grounded = false,
+  signal?: AbortSignal,
 ) {
   const { response: j } = await geminiGenerate(
     (model) => {
@@ -180,7 +194,7 @@ export async function gemini(
       if (grounded) body.tools = [{ google_search: {} }];
       return body;
     },
-    { searchFallback: grounded },
+    { searchFallback: grounded, signal },
   );
   const candidate = j.candidates?.[0];
   const text = candidate?.content?.parts

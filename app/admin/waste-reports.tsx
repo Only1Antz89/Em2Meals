@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { CustomerIdentity } from "@/components/customer-identity";
 import { Expand, Link2, Sparkles } from "lucide-react";
 import { useOps } from "./ops-context";
 import {
@@ -36,11 +37,12 @@ export default function WasteReports() {
   return (
     <>
       <ReportControls filter={filter} setFilter={setFilter} />
-      <h2 className="report-scope">
-        {customer
-          ? `${customer.company || customer.name} · waste & reports`
-          : "Whole-business waste & reports"}
-      </h2>
+      <CustomerIdentity
+        name={customer ? customer.company || customer.name : "Whole business"}
+        logoUrl={customer?.logoUrl}
+        detail={`Food waste & reports · ${filter.from} to ${filter.to} · ${filter.service === "all" ? "All services" : filter.service}`}
+      />
+      {customer && !customer.logoUrl && <p className="panel-note">Add this customer’s logo in CRM → Update customer.</p>}
       <p className="panel-note">
         Waste is grouped by record date. Catering performance uses completed
         events in the selected period.
@@ -298,7 +300,7 @@ export default function WasteReports() {
         </Panel>
       </div>
       {customer && recap ? (
-        <WrappedPanel recap={recap} />
+        <WrappedPanel key={customer.id} recap={recap} />
       ) : (
         <Panel title="Client Wrapped">
           <p className="panel-note">
@@ -334,13 +336,17 @@ function WrappedPanel({ recap }: { recap: ReturnType<typeof customerExport> }) {
   const [note, setNote] = useState("");
   const [full, setFull] = useState(false);
   const [error, setError] = useState("");
-  const story = useMemo(() => {
+  const candidate = useMemo(() => {
     try {
       return buildWrapped(s, filter, { note });
     } catch {
       return null;
     }
   }, [s, filter, note]);
+  const source = candidate ? JSON.stringify({ ...candidate, generatedAt: "" }) : "";
+  const [generated, setGenerated] = useState<{ story: NonNullable<typeof candidate>; source: string } | null>(null);
+  const ready = generated?.source === source;
+  const story = ready ? generated!.story : null;
   const shares = (s.wrapped || [])
     .filter((x) => x.customerId === customer.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -350,6 +356,7 @@ function WrappedPanel({ recap }: { recap: ReturnType<typeof customerExport> }) {
       : `${window.location.origin}/wrapped/${id}`;
   const share = async () => {
     setError("");
+    if (!story || !ready) { setError("Generate the wrap-up before sharing."); return; }
     try {
       const next = await run("wrapped-share", {
         customerId: customer.id,
@@ -357,6 +364,7 @@ function WrappedPanel({ recap }: { recap: ReturnType<typeof customerExport> }) {
         to: filter.to,
         service: filter.service,
         note,
+        expectedStory: source,
       });
       const created = (next.wrapped || []).at(-1);
       if (created) {
@@ -386,18 +394,24 @@ function WrappedPanel({ recap }: { recap: ReturnType<typeof customerExport> }) {
     <Panel
       title={`Client Wrapped · ${customer.company || customer.name}`}
       action={
-        story && story.occasions > 0 ? (
-          <Button variant="outline" onClick={() => setFull(true)}>
-            <Expand size={15} /> Full screen
-          </Button>
-        ) : undefined
+        <div className="inline-actions">
+          <Button disabled={busy || !candidate || candidate.occasions === 0} onClick={() => {
+            if (candidate) { setGenerated({ story: candidate, source }); setError(""); setFull(false); }
+          }}><Sparkles size={15} /> {generated ? "Regenerate wrap-up" : "Generate wrap-up"}</Button>
+          {story && <Button variant="outline" onClick={() => setFull(true)}><Expand size={15} /> Full screen</Button>}
+        </div>
       }
     >
-      {!story || story.occasions === 0 ? (
-        <p className="panel-note">
-          No completed events for this customer in the selected period. Pick a
-          longer period, such as year to date.
-        </p>
+      <CustomerIdentity name={customer.company || customer.name} logoUrl={customer.logoUrl} detail={`${filter.from} to ${filter.to}`} />
+      <div className="panel-note"><Field label="Personal note from the chef (optional)" value={note} onChange={setNote} wide /></div>
+      {!story ? (
+        <>
+          <p className="panel-note" role="status">
+            {!candidate || !candidate.occasions ? "No completed events for this customer in the selected period. Choose a longer period."
+              : generated ? "The filters, note or source records changed. Regenerate the wrap-up to update the preview and exports."
+              : "Generate a wrap-up from all reported waste for this customer, period and service. The same figures are used in the preview, CSV and client link."}
+          </p>
+        </>
       ) : (
         <div className="wrapped-admin">
           <WrappedStoryView story={story} variant="embed" />
@@ -414,12 +428,7 @@ function WrappedPanel({ recap }: { recap: ReturnType<typeof customerExport> }) {
                   : "Every event has data behind it."}
               </p>
             </div>
-            <Field
-              label="Personal note from the chef (optional)"
-              value={note}
-              onChange={setNote}
-              wide
-            />
+            {story.reportedWaste && <p className="panel-note">All reported waste: {story.reportedWaste.measuredKg.toFixed(2)} kg across {story.reportedWaste.records} records; {story.reportedWaste.unmeasured} without measured weight. Uses waste-record dates, matching the register. Event figures use completed-event dates.</p>}
             <p className="panel-note">
               The client sees only what is in the preview: no costs, suppliers
               or internal notes. A link is a frozen copy, so later edits do not
@@ -446,7 +455,7 @@ function WrappedPanel({ recap }: { recap: ReturnType<typeof customerExport> }) {
                       "Guests",
                       "Portions",
                       "Portions enjoyed %",
-                      "Measured waste kg",
+                      "Completed-event measured waste kg",
                       "Waste per guest g",
                       "Unserved portions",
                       "Unmeasured records",
@@ -464,6 +473,10 @@ function WrappedPanel({ recap }: { recap: ReturnType<typeof customerExport> }) {
                       recap.unservedPortions,
                       recap.unmeasuredRecords,
                     ],
+                    ["All reported waste kg", "Waste records", "Unmeasured records"],
+                    [story.reportedWaste?.measuredKg ?? "", story.reportedWaste?.records ?? "", story.reportedWaste?.unmeasured ?? ""],
+                    ["Waste category", "Records", "Measured kg"],
+                    ...(story.reportedWaste?.categories || []).map((c) => [c.name, c.records, c.measuredKg]),
                     ["Dish", "Portions"],
                     ...recap.popular.map((p) => [p.name, p.quantity]),
                   ])

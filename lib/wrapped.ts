@@ -14,6 +14,7 @@ import {
   inPeriod,
   orderMatches,
   previousPeriod,
+  wasteReport,
 } from "./reporting";
 
 export const wasteDisposals = [
@@ -59,6 +60,13 @@ export type WrappedStory = {
   version: 1;
   business: string;
   customer: string;
+  customerLogoUrl?: string;
+  reportedWaste?: {
+    records: number;
+    unmeasured: number;
+    measuredKg: number;
+    categories: { name: string; records: number; measuredKg: number }[];
+  };
   from: string;
   to: string;
   periodLabel: string;
@@ -262,6 +270,7 @@ export function buildWrapped(
   if (!f.customerId) throw Error("Select one customer for a Wrapped report");
   const customer = s.customers.find((c) => c.id === f.customerId);
   if (!customer) throw Error("Customer not found");
+  const report = wasteReport(s, f);
   const c = cohort(s, f);
   const now = headline(c);
   const before = headline(cohort(s, previousPeriod(f)));
@@ -376,6 +385,13 @@ export function buildWrapped(
     version: 1,
     business: s.settings.businessName || "Fork Goodness Baked",
     customer: customer.company || customer.name,
+    customerLogoUrl: customer.logoUrl,
+    reportedWaste: {
+      records: report.waste.length,
+      unmeasured: report.unmeasured,
+      measuredKg: report.weight / 1000,
+      categories: report.categories.map((c) => ({ name: c.name, records: c.records, measuredKg: c.grams / 1000 })),
+    },
     from: f.from,
     to: f.to,
     periodLabel: periodLabel(f.from, f.to),
@@ -573,6 +589,7 @@ export function wrappedCommand(
           to: dateValue,
           service: z.enum(["all", "private", "corporate"]).default("all"),
           note: text.default(""),
+          expectedStory: z.string().max(200000).optional(),
         })
         .parse(payload);
       if (v.from > v.to)
@@ -581,6 +598,8 @@ export function wrappedCommand(
         note: v.note,
         generatedAt: at.slice(0, 10),
       });
+      if (v.expectedStory && v.expectedStory !== JSON.stringify({ ...story, generatedAt: "" }))
+        throw Error("The report data changed. Generate the wrap-up again before sharing.");
       if (!story.occasions)
         throw Error(
           "This customer has no completed events in the selected period",

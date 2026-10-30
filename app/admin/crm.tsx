@@ -167,6 +167,7 @@ function openCustomerEditor(open: (edit: Edit) => void, customer?: Customer) {
       { key: "industry", label: "Customer industry", options: [...industries] },
       { key: "name", label: "Contact name", required: true },
       { key: "company", label: "Company" },
+      { key: "logoUrl", label: "Customer logo URL (HTTPS)", type: "url" },
       { key: "email", label: "Email", type: "email", required: true },
       { key: "phone", label: "Phone" },
       { key: "notes", label: "Preferences / relationship notes", type: "textarea" },

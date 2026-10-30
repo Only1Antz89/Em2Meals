@@ -283,6 +283,7 @@ export type State = OperationsState & {
   ingredients: Ingredient[];
   recipes: Recipe[];
   customers: {
+    logoUrl?: string;
     industry?: string;
     erasedAt?: string;
     id: string;
@@ -1102,6 +1103,7 @@ export function applyCommand(
         .object({
           id: short.optional(),
           industry: z.enum(industries).optional(),
+          logoUrl: safeURL.optional(),
           name: short.min(1),
           company: short,
           email: z.string().email(),

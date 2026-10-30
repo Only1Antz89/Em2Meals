@@ -1,0 +1,6 @@
+.identity { display: flex; align-items: center; gap: 16px; margin: 20px 0; min-width: 0; }
+.identity h2 { display: block; margin: 0; font: 28px Georgia, serif; overflow-wrap: anywhere; }
+.identity p { margin: 6px 0 0; font-size: 14px; }
+.mark { display: grid; place-items: center; width: 64px; height: 64px; flex: 0 0 64px; border: 1px solid #d9ddd8; border-radius: 12px; background: #eeeae1; color: #203945; overflow: hidden; font: 24px Georgia, serif; }
+.mark img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
+@media (max-width: 600px) { .identity { gap: 12px; } .identity h2 { font-size: 23px; } .mark { width: 48px; height: 48px; flex-basis: 48px; font-size: 19px; } }

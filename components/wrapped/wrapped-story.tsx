@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import type { WrappedStory } from "@/lib/wrapped";
+import { CustomerIdentity } from "@/components/customer-identity";
 import styles from "./wrapped-story.module.css";
 
 const SLIDE_MS = 7000;
@@ -124,6 +125,7 @@ function slidesFor(story: WrappedStory): Slide[] {
     body: () => (
       <div className={styles.introBody}>
         <p className={styles.kicker}>{story.business}</p>
+        <CustomerIdentity name={story.customer} logoUrl={story.customerLogoUrl} />
         <h1 className={styles.giant}>
           Your
           <br />
@@ -460,6 +462,19 @@ function slidesFor(story: WrappedStory): Slide[] {
           )}
         </div>
       ),
+    });
+  }
+  if (story.reportedWaste) {
+    const waste = story.reportedWaste;
+    slides.push({
+      key: "reported-waste", theme: styles.themeGreen, label: "All reported waste",
+      body: () => <div className={styles.stack}>
+        <p className={styles.kicker}>All reported food waste</p>
+        <h2 className={styles.big}>{waste.measuredKg.toFixed(2)} kg measured</h2>
+        <p className={styles.lede}>{waste.records} records · {waste.unmeasured} without measured weight</p>
+        <dl className={styles.grid}>{waste.categories.map((c) => <div key={c.name}><dt>{c.name}</dt><dd>{c.measuredKg.toFixed(2)} kg</dd></div>)}</dl>
+        <p className={styles.small}>Waste logged from {story.from} to {story.to}, matching the waste register. {waste.records ? "Missing weights are not zero waste." : "No records does not establish zero waste."} Event performance uses completed-event dates.</p>
+      </div>,
     });
   }
   slides.push({

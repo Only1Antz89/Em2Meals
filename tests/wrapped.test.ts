@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { applyCommand, type State, today } from "../lib/domain";
 import { sampleState } from "../lib/sample";
-import { defaultFilter } from "../lib/reporting";
+import { defaultFilter, wasteReport } from "../lib/reporting";
 import {
   buildWrapped,
   checksDue,
@@ -146,4 +146,41 @@ test("sample workspace includes a shared example Wrapped", () => {
   assert.ok(share && !share.revokedAt);
   assert.equal(share.story.occasions, 5);
   assert.deepEqual(share.story.coverage, { checked: 5, events: 5 });
+});
+
+test("generated wrap-up gathers all filtered waste and matches the register", () => {
+  const s = sampleState();
+  const f = filter(s);
+  const base = s.waste.find((w) => w.orderId === "sample-delivered")!;
+  for (const [i, category] of ["preparation trimmings", "spoilage", "plate waste"].entries()) {
+    s.waste.push({ ...base, id: `extra-${i}`, category, date: today(), weightGrams: 100, weightMeasured: true });
+  }
+  s.waste.push({ ...base, id: "unassigned", orderId: "", date: today(), weightGrams: 999 });
+  s.waste.push({ ...base, id: "outside-period", date: "2000-01-01", weightGrams: 999 });
+  const r = wasteReport(s, f);
+  const story = buildWrapped(s, f, { generatedAt: today() });
+  assert.equal(story.reportedWaste?.records, r.waste.length);
+  assert.equal(story.reportedWaste?.measuredKg, r.weight / 1000);
+  assert.equal(story.reportedWaste?.unmeasured, r.unmeasured);
+  assert.equal(story.reportedWaste?.categories.reduce((n, c) => n + c.records, 0), r.waste.length);
+  assert.deepEqual(buildWrapped(s, f, { generatedAt: today() }), story);
+});
+test("customer logos persist into generated and frozen stories", () => {
+  let s = sampleState();
+  const customer = s.customers.find((c) => c.id === filter(s).customerId)!;
+  s = run(s, "customer", { ...customer, logoUrl: "https://example.com/customer.svg" });
+  const story = buildWrapped(s, filter(s));
+  assert.equal(story.customerLogoUrl, "https://example.com/customer.svg");
+  assert.throws(() => run(s, "customer", { ...customer, logoUrl: "javascript:alert(1)" }));
+  s = run(s, "wrapped-share", { ...filter(s), expectedStory: JSON.stringify({ ...story, generatedAt: "" }) });
+  assert.equal(s.wrapped?.at(-1)?.story.customerLogoUrl, story.customerLogoUrl);
+});
+test("sharing rejects changes after generation and preserves matching generated totals", () => {
+  const s = sampleState(), f = filter(s);
+  const story = buildWrapped(s, f);
+  const expectedStory = JSON.stringify({ ...story, generatedAt: "" });
+  const shared = run(s, "wrapped-share", { ...f, expectedStory });
+  assert.deepEqual(shared.wrapped?.at(-1)?.story.reportedWaste, story.reportedWaste);
+  s.waste.push({ ...s.waste.find((w) => w.orderId === "sample-delivered")!, id: "after-generation", weightGrams: 200 });
+  assert.throws(() => run(s, "wrapped-share", { ...f, expectedStory }), /Generate the wrap-up again/);
 });

@@ -28,6 +28,7 @@ import { AutoSousIcon } from "./autosous-icon";
 import { AutoSousMarkdown } from "./assistant-display";
 import type { Mascot, MascotMood } from "./autosous-mascot";
 import { useOps } from "./ops-context";
+import { VENUE_NOTICE, openVenueNotice, watchVenue, type VenueNotice } from "./venue-notices";
 
 type Feed = {
   alerts: AutoSousAlert[];
@@ -64,6 +65,7 @@ function moodFor(alerts: AutoSousAlert[]): MascotMood {
 export function AutoSousAvatar() {
   const { s, mode, href, integrations } = useOps();
   const [open, setOpen] = useState(false);
+  const [venueNotice, setVenueNotice] = useState<VenueNotice | null>(null);
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("briefing");
   const [learned, setLearned] = useState(() => {
@@ -101,6 +103,17 @@ export function AutoSousAvatar() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const mascot = useRef<Mascot | null>(null);
   const previousUrgent = useRef(0);
+
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const notice = (event as CustomEvent<VenueNotice>).detail;
+      if (!notice || notice.mode !== mode) return;
+      setVenueNotice((current) => notice.kind === "dismiss" ? (current?.id === notice.id ? null : current) : notice);
+      if (notice.kind === "ready") mascot.current?.wave();
+    };
+    window.addEventListener(VENUE_NOTICE, receive);
+    return () => window.removeEventListener(VENUE_NOTICE, receive);
+  }, [mode]);
 
   const load = useCallback(async () => {
     try {
@@ -164,7 +177,7 @@ export function AutoSousAvatar() {
   const news = feed?.foodSafety.news || [];
   const unseen = attention.filter((a) => a.severity !== "info" && !seen[a.id]).length;
   const newNews = news.filter((n) => !seen[`news-${n.id}`]).length;
-  const badge = unseen + (newNews ? 1 : 0);
+  const badge = unseen + (newNews ? 1 : 0) + (venueNotice?.kind === "ready" || venueNotice?.kind === "failed" ? 1 : 0);
   const mood = moodFor(attention);
 
   useEffect(() => {
@@ -349,8 +362,31 @@ export function AutoSousAvatar() {
     <p className="autosous-swipe-hint">Swipe a card right to open it, or left to hide it for today.</p>
   ) : null;
 
+  const venuePopup = venueNotice ? (
+    <section className={`autosous-venue-popup ${open ? "is-inline" : ""}`} aria-label="AutoSous venue update">
+      <button type="button" className="autosous-venue-popup-close" aria-label="Dismiss venue update" onClick={() => setVenueNotice(null)}><X size={14} /></button>
+      <div role="status">
+        <strong>{venueNotice.kind === "ready" ? "Your venue details are ready" : venueNotice.kind === "failed" ? "I couldn’t finish this venue lookup" : venueNotice.kind === "waiting" ? "I’ll let you know when it’s ready" : "This is taking a little longer"}</strong>
+        <p>{venueNotice.kind === "ready" ? `I’ve finished gathering information for ${venueNotice.label}.` : venueNotice.kind === "failed" ? `I couldn’t gather the details for ${venueNotice.label}. Return to the venue to try again.` : venueNotice.kind === "waiting" ? `I’m gathering information for ${venueNotice.label}. You can return to chat while I finish.` : `I’m still gathering information for ${venueNotice.label}. Want me to pop up here when it’s ready?`}</p>
+      </div>
+      {venueNotice.kind === "slow" ? (
+        <button type="button" className="autosous-venue-popup-action" onClick={() => {
+          watchVenue({ id: venueNotice.id, mode, enabled: true });
+          setVenueNotice({ ...venueNotice, kind: "waiting" });
+        }}>Let me know</button>
+      ) : venueNotice.kind === "ready" || venueNotice.kind === "failed" ? (
+        <button type="button" className="autosous-venue-popup-action" onClick={() => {
+          openVenueNotice(venueNotice);
+          setVenueNotice(null);
+          setOpen(false);
+        }}>{venueNotice.kind === "ready" ? "View venue details" : "Return to venue"} <ArrowRight size={13} /></button>
+      ) : null}
+    </section>
+  ) : null;
+
   return (
     <div className={`autosous-avatar ${open ? "is-open" : ""} mood-${mood}`}>
+      {!open ? venuePopup : null}
       <section
         className="autosous-avatar-panel"
         aria-label="AutoSous"
@@ -416,6 +452,7 @@ export function AutoSousAvatar() {
           ))}
         </nav>
         <div className="autosous-avatar-body">
+          {open ? venuePopup : null}
           {error ? <p className="autosous-avatar-empty">{error}</p> : null}
           {!feed && !error ? (
             <p className="autosous-avatar-empty">

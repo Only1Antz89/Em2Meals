@@ -601,6 +601,7 @@ function VenueView({
         </header>
         <div className="venue-overlay-body">
           <VenueLookupProgress
+            target={target}
             busy={!!busy}
             ready={!!target && !error && !!(result || map.place || (order && venueResearched(order)))}
             label={title}

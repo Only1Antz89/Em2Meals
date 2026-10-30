@@ -8641,3 +8641,10 @@ a.owner-account {
 .venue-progress-track span { display: block; width: 35%; height: 100%; background: #32674c; animation: venue-lookup-slide 1.8s ease-in-out infinite; }
 @keyframes venue-lookup-slide { from { transform: translateX(-100%); } to { transform: translateX(390%); } }
 @media (prefers-reduced-motion: reduce) { .venue-progress-track span { animation: none; width: 100%; opacity: .6; } }
+
+.autosous-venue-popup { position: absolute; right: 0; bottom: 100px; width: min(330px, calc(100vw - 32px)); padding: 18px; border: 1px solid #dce3dc; border-radius: 14px; background: #fffefb; color: #203744; box-shadow: 0 12px 36px -12px rgba(20, 45, 35, .35); }
+.autosous-venue-popup strong { display: block; padding-right: 20px; font-size: 14px; line-height: 1.45; }
+.autosous-venue-popup p { margin: 8px 0 0; color: #52645a; font-size: 13px; line-height: 1.6; }
+.autosous-venue-popup-close { position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; color: #52645a; background: transparent; cursor: pointer; }
+.autosous-venue-popup-action { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 8px 12px; border: 0; border-radius: 7px; background: #203744; color: white; font: 600 12px/1.4 system-ui, sans-serif; cursor: pointer; }
+.autosous-venue-popup.is-inline { position: relative; bottom: auto; width: 100%; box-shadow: none; margin-bottom: 14px; }

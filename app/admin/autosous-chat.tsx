@@ -10,6 +10,7 @@ import { AutoSousMarkdown, AutoSousRateLimitAlert } from "./assistant-display";
 import { useOps } from "./ops-context";
 import { AutoSousHat } from "./autosous-hat";
 import { VenueMode, VenueOffers, useAutoVenueResearch, type VenueTarget } from "./autosous-venues";
+import { VENUE_OPEN, type VenueNotice } from "./venue-notices";
 
 type ProposalState = "pending" | "applying" | "applied" | "dismissed";
 type Turn = {
@@ -68,6 +69,21 @@ export function AutoSousChat() {
     setVenue(target);
     setCompose("venue");
   };
+  useEffect(() => {
+    const open = (event: Event) => {
+      const notice = (event as CustomEvent<VenueNotice>).detail;
+      if (!notice || notice.mode !== mode) return;
+      setVenue(notice.target);
+      setCompose("venue");
+    };
+    window.addEventListener(VENUE_OPEN, open);
+    return () => window.removeEventListener(VENUE_OPEN, open);
+  }, [mode]);
+  useEffect(() => {
+    if (compose !== "venue") return;
+    const frame = requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    return () => cancelAnimationFrame(frame);
+  }, [compose]);
   // Paths may carry a tab, e.g. "suppliers?tab=purchasing".
   const to = (path: string) => {
     const [page, query] = path.split("?");
@@ -183,17 +199,17 @@ export function AutoSousChat() {
 
   return (
     <div className={`autosous-chat ${compose === "venue" ? "is-venue" : ""}`}>
-      {compose === "venue" ? (
-        <VenueMode
-          target={venue}
-          onTarget={setVenue}
-          working={working}
-          onClose={() => {
-            setVenue(null);
-            setCompose("ask");
-          }}
-        />
-      ) : !turns.length ? (
+      {compose === "venue" || venue ? (
+        <div hidden={compose !== "venue"}>
+          <VenueMode
+            target={venue}
+            onTarget={setVenue}
+            working={working}
+            onClose={() => setCompose("ask")}
+          />
+        </div>
+      ) : null}
+      {compose === "venue" ? null : !turns.length ? (
         <div className="assistant-intro">
           <AutoSousHat size={132} busy={thinking} className="assistant-intro-hat" />
           <h2>What can I help with in the kitchen today?</h2>
@@ -366,7 +382,6 @@ export function AutoSousChat() {
               className={compose === "ask" ? "selected" : ""}
               onClick={() => {
                 setCompose("ask");
-                setVenue(null);
               }}
             >
               <MessageCircle size={13} /> Ask
